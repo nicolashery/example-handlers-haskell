@@ -3,13 +3,16 @@ module App.Scotty
   )
 where
 
-import Web.Scotty (ScottyM, get, param, scotty, text)
+import Web.Scotty (ActionM, ScottyM, param, post, scotty, text)
+
+purchaseHandler :: ActionM ()
+purchaseHandler = do
+  cartId <- param "cartId"
+  text cartId
 
 application :: ScottyM ()
 application = do
-  get "/echo/:message" $ do
-    message <- param "message"
-    text message
+  post "/cart/:cartId/purchase" purchaseHandler
 
 main :: IO ()
 main = do
