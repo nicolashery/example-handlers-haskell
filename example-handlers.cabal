@@ -76,10 +76,11 @@ common options
 library
     import: options
     exposed-modules:
-        App
         App.Scotty
     build-depends:
+        , mtl ^>= 2.2
         , scotty ^>= 0.12
+        , text ^>= 1.2
     hs-source-dirs: src
 
 executable example-handlers
