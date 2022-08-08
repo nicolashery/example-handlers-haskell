@@ -77,10 +77,13 @@ library
     import: options
     exposed-modules:
         App.Scotty
+        App.Yesod
     build-depends:
         , mtl ^>= 2.2
         , scotty ^>= 0.12
         , text ^>= 1.2
+        , warp ^>= 3.3
+        , yesod-core ^>= 1.6
     hs-source-dirs: src
 
 executable example-handlers
