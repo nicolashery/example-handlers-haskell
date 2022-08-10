@@ -4,17 +4,15 @@ module App.Scotty
 where
 
 import App.Config (Config (configPaymentMaxRetries), configInit)
+import App.Text (tlshow)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT), asks)
 import Data.Text.Lazy qualified as TL
 import Web.Scotty.Trans (ActionT, ScottyT, param, post, scottyT, text)
 
-tlshow :: (Show a) => a -> TL.Text
-tlshow v = TL.pack $ show v
-
 data App = App
   { appConfig :: Config,
-    appLogFunc :: ()
+    appLogger :: ()
   }
 
 appInit :: IO App
@@ -23,7 +21,7 @@ appInit = do
   let app =
         App
           { appConfig = config,
-            appLogFunc = ()
+            appLogger = ()
           }
   pure app
 

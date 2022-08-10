@@ -78,6 +78,7 @@ library
     exposed-modules:
         App.Config
         App.Scotty
+        App.Text
         App.Yesod
     build-depends:
         , mtl ^>= 2.2

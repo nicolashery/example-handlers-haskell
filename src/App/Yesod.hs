@@ -10,11 +10,26 @@ module App.Yesod
   )
 where
 
+import App.Config (Config (configPaymentMaxRetries), configInit)
+import App.Text (tshow)
 import Data.Text (Text)
 import Network.Wai.Handler.Warp (run)
-import Yesod.Core (Yesod, mkYesod, parseRoutes, renderRoute, toWaiAppPlain)
+import Yesod.Core (Yesod, getsYesod, mkYesod, parseRoutes, renderRoute, toWaiAppPlain)
 
 data App = App
+  { appConfig :: Config,
+    appLogger :: ()
+  }
+
+appInit :: IO App
+appInit = do
+  config <- configInit
+  let app =
+        App
+          { appConfig = config,
+            appLogger = ()
+          }
+  pure app
 
 mkYesod
   "App"
@@ -26,16 +41,21 @@ instance Yesod App
 
 postCartPurchaseR :: Text -> Handler Text
 postCartPurchaseR cartId = do
+  paymentMaxRetries <- getsYesod (configPaymentMaxRetries . appConfig)
   let response =
         mconcat
           [ "cartId: ",
             cartId,
+            "\n",
+            "paymentMaxRetries: ",
+            tshow paymentMaxRetries,
             "\n"
           ]
   pure response
 
 main :: IO ()
 main = do
-  app <- toWaiAppPlain App
+  app <- appInit
+  waiApp <- toWaiAppPlain app
   let port = 3000
-  run port app
+  run port waiApp
