@@ -76,6 +76,7 @@ common options
 library
     import: options
     exposed-modules:
+        App.Config
         App.Scotty
         App.Yesod
     build-depends:
