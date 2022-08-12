@@ -78,11 +78,13 @@ library
     exposed-modules:
         App.Config
         App.Scotty
+        App.Servant
         App.Text
         App.Yesod
     build-depends:
         , mtl ^>= 2.2
         , scotty ^>= 0.12
+        , servant-server ^>= 0.19
         , text ^>= 1.2
         , warp ^>= 3.3
         , yesod-core ^>= 1.6

@@ -35,8 +35,8 @@ runApp m = do
   app <- appInit
   runReaderT (unAppM m) app
 
-purchaseHandler :: ActionT TL.Text AppM ()
-purchaseHandler = do
+postCartPurchaseHandler :: ActionT TL.Text AppM ()
+postCartPurchaseHandler = do
   cartId <- param "cartId"
   paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
   let response =
@@ -52,7 +52,7 @@ purchaseHandler = do
 
 application :: ScottyT TL.Text AppM ()
 application = do
-  post "/cart/:cartId/purchase" purchaseHandler
+  post "/cart/:cartId/purchase" postCartPurchaseHandler
 
 main :: IO ()
 main = do
