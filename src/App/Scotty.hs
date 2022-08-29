@@ -6,7 +6,7 @@ where
 import App.Config (Config (configPaymentMaxRetries), configInit)
 import App.Text (tlshow)
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (MonadReader, ReaderT (runReaderT), asks)
+import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Data.Text.Lazy qualified as TL
 import Web.Scotty.Trans (ActionT, ScottyT, param, post, scottyT, text)
 
