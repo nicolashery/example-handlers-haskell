@@ -82,12 +82,14 @@ library
         App.Text
         App.Yesod
     build-depends:
+        , Blammo ^>= 1.0
         , mtl ^>= 2.2
         , scotty ^>= 0.12
         , servant-server ^>= 0.19
         , text ^>= 1.2
         , warp ^>= 3.3
         , yesod-core ^>= 1.6
+        , microlens ^>= 0.4
     hs-source-dirs: src
 
 executable example-handlers
