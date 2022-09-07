@@ -8,18 +8,16 @@ where
 import App.Config (Config (configPaymentMaxRetries), configInit)
 import App.Text (tlshow)
 import Blammo.Logging
-  ( HasLogger,
+  ( HasLogger (loggerL),
     Logger,
     LoggingT,
     Message ((:#)),
     MonadLogger (monadLoggerLog),
-    defaultLogSettings,
     logInfo,
-    newLogger,
     runLoggerLoggingT,
     (.=),
   )
-import Blammo.Logging.Simple (HasLogger (loggerL))
+import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
@@ -38,7 +36,7 @@ instance HasLogger App where
 appInit :: IO App
 appInit = do
   config <- configInit
-  logger <- newLogger defaultLogSettings
+  logger <- newLoggerEnv
   let app =
         App
           { appConfig = config,

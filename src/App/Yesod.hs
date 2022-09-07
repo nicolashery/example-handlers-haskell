@@ -12,22 +12,44 @@ where
 
 import App.Config (Config (configPaymentMaxRetries), configInit)
 import App.Text (tshow)
+import Blammo.Logging
+  ( HasLogger (loggerL),
+    Logger,
+    Message ((:#)),
+    MonadLogger (monadLoggerLog),
+    logInfo,
+    runLoggerLoggingT,
+    (.=),
+  )
+import Blammo.Logging.Simple (newLoggerEnv)
 import Data.Text (Text)
+import Lens.Micro (lens)
 import Network.Wai.Handler.Warp (run)
-import Yesod.Core (Yesod, getsYesod, mkYesod, parseRoutes, renderRoute, toWaiAppPlain)
+import Yesod.Core
+  ( Yesod (messageLoggerSource),
+    getsYesod,
+    mkYesod,
+    parseRoutes,
+    renderRoute,
+    toWaiAppPlain,
+  )
 
 data App = App
   { appConfig :: Config,
-    appLogger :: ()
+    appLogger :: Logger
   }
+
+instance HasLogger App where
+  loggerL = lens appLogger $ \x y -> x {appLogger = y}
 
 appInit :: IO App
 appInit = do
   config <- configInit
+  logger <- newLoggerEnv
   let app =
         App
           { appConfig = config,
-            appLogger = ()
+            appLogger = logger
           }
   pure app
 
@@ -37,10 +59,13 @@ mkYesod
   /cart/#Text/purchase CartPurchaseR POST
 |]
 
-instance Yesod App
+instance Yesod App where
+  messageLoggerSource app _logger loc source level msg =
+    runLoggerLoggingT app $ monadLoggerLog loc source level msg
 
 postCartPurchaseR :: Text -> Handler Text
 postCartPurchaseR cartId = do
+  logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- getsYesod (configPaymentMaxRetries . appConfig)
   let response =
         mconcat
@@ -51,6 +76,7 @@ postCartPurchaseR cartId = do
             tshow paymentMaxRetries,
             "\n"
           ]
+  logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
   pure response
 
 main :: IO ()
