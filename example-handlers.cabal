@@ -32,7 +32,6 @@ common options
         GADTSyntax
         GADTs
         GeneralisedNewtypeDeriving
-        GeneralizedNewtypeDeriving
         HexFloatLiterals
         ImplicitPrelude
         ImportQualifiedPost
@@ -83,13 +82,16 @@ library
         App.Yesod
     build-depends:
         , Blammo ^>= 1.0
+        , lifted-async ^>= 0.10
+        , microlens ^>= 0.4
+        , monad-control ^>= 1.0
         , mtl ^>= 2.2
         , scotty ^>= 0.12
         , servant-server ^>= 0.19
         , text ^>= 1.2
+        , transformers-base ^>= 0.4
         , warp ^>= 3.3
         , yesod-core ^>= 1.6
-        , microlens ^>= 0.4
     hs-source-dirs: src
 
 executable example-handlers
