@@ -19,15 +19,14 @@ import Blammo.Logging
   )
 import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async.Lifted.Safe (concurrently)
-import Control.Monad.Base (MonadBase)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
-import Control.Monad.Trans.Control (MonadBaseControl (liftBaseWith, restoreM), StM)
 import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
 import Lens.Micro (lens)
+import UnliftIO (MonadUnliftIO)
+import UnliftIO.Async (concurrently)
 import Web.Scotty.Trans (ActionT, ScottyError, ScottyT, param, post, scottyT, text)
 
 data App = App
@@ -52,12 +51,7 @@ appInit = do
 newtype AppM a = AppM
   { unAppM :: ReaderT App (LoggingT IO) a
   }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader App, MonadBase IO)
-
-instance MonadBaseControl IO AppM where
-  type StM AppM a = a
-  liftBaseWith f = AppM $ liftBaseWith $ \runInBase -> f (runInBase . unAppM)
-  restoreM = AppM . restoreM
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader App, MonadUnliftIO)
 
 instance MonadLogger AppM where
   monadLoggerLog loc logSource logLevel msg =
