@@ -1,7 +1,7 @@
 module Main (main) where
 
-import App.Scotty qualified
+import App.Yesod qualified
 
 main :: IO ()
 main = do
-  App.Scotty.main
+  App.Yesod.main

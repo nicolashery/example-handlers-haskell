@@ -10,6 +10,14 @@ module App.Yesod
   )
 where
 
+import App.Cart
+  ( BookingId (unBookingId),
+    PaymentId (unPaymentId),
+    newBookingPayload,
+    newPaymentPayload,
+    processBooking,
+    processPayment,
+  )
 import App.Config (Config (configPaymentMaxRetries), configInit)
 import App.Text (tshow)
 import Blammo.Logging
@@ -22,9 +30,12 @@ import Blammo.Logging
     (.=),
   )
 import Blammo.Logging.Simple (newLoggerEnv)
+import Control.Concurrent (threadDelay)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text (Text)
 import Lens.Micro (lens)
 import Network.Wai.Handler.Warp (run)
+import UnliftIO.Async (concurrently)
 import Yesod.Core
   ( Yesod (messageLoggerSource),
     getsYesod,
@@ -67,6 +78,9 @@ postCartPurchaseR :: Text -> Handler Text
 postCartPurchaseR cartId = do
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- getsYesod (configPaymentMaxRetries . appConfig)
+  (bookingId, paymentId) <-
+    concurrently (processBooking newBookingPayload) (processPayment newPaymentPayload)
+  liftIO $ threadDelay (100 * 1000)
   let response =
         mconcat
           [ "cartId: ",
@@ -74,6 +88,12 @@ postCartPurchaseR cartId = do
             "\n",
             "paymentMaxRetries: ",
             tshow paymentMaxRetries,
+            "\n",
+            "bookingId: ",
+            unBookingId bookingId,
+            "\n",
+            "paymentId: ",
+            unPaymentId paymentId,
             "\n"
           ]
   logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]

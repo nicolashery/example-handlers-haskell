@@ -5,7 +5,14 @@ module App.Scotty
   )
 where
 
-import App.Cart (BookingId (unBookingId), PaymentId (unPaymentId), newBookingPayload, newPaymentPayload, processBooking, processPayment)
+import App.Cart
+  ( BookingId (unBookingId),
+    PaymentId (unPaymentId),
+    newBookingPayload,
+    newPaymentPayload,
+    processBooking,
+    processPayment,
+  )
 import App.Config (Config (configPaymentMaxRetries), configInit)
 import App.Text (tlshow)
 import Blammo.Logging
