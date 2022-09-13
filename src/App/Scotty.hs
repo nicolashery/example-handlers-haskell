@@ -5,6 +5,7 @@ module App.Scotty
   )
 where
 
+import App.Cart (BookingId (unBookingId), PaymentId (unPaymentId), newBookingPayload, newPaymentPayload, processBooking, processPayment)
 import App.Config (Config (configPaymentMaxRetries), configInit)
 import App.Text (tlshow)
 import Blammo.Logging
@@ -22,7 +23,6 @@ import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
-import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
 import Lens.Micro (lens)
 import UnliftIO (MonadUnliftIO)
@@ -65,36 +65,6 @@ runApp :: AppM a -> IO a
 runApp m = do
   app <- appInit
   runLoggerLoggingT app $ runReaderT (unAppM m) app
-
-newtype BookingId = BookingId {unBookingId :: Text}
-
-data BookingPayload = BookingPayload
-
-newBookingPayload :: BookingPayload
-newBookingPayload = BookingPayload
-
-processBooking :: BookingPayload -> AppM BookingId
-processBooking _ = do
-  logInfo $ "Booking starting"
-  liftIO $ threadDelay (2 * 1000 * 1000)
-  let bookingId = BookingId "TKCY693D5ACB"
-  logInfo $ "Booking successful" :# ["booking_id" .= unBookingId bookingId]
-  pure bookingId
-
-newtype PaymentId = PaymentId {unPaymentId :: Text}
-
-data PaymentPayload = PaymentPayload
-
-newPaymentPayload :: PaymentPayload
-newPaymentPayload = PaymentPayload
-
-processPayment :: PaymentPayload -> AppM PaymentId
-processPayment _ = do
-  logInfo $ "Payment starting"
-  liftIO $ threadDelay (1 * 1000 * 1000)
-  let paymentId = PaymentId "zTNBbSdy3vdOSnRT3xzFHviB"
-  logInfo $ "Payment successful" :# ["payment_id" .= unPaymentId paymentId]
-  pure paymentId
 
 postCartPurchaseHandler :: ActionT TL.Text AppM ()
 postCartPurchaseHandler = do

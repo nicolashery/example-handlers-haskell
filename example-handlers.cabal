@@ -75,6 +75,7 @@ common options
 library
     import: options
     exposed-modules:
+        App.Cart
         App.Config
         App.Scotty
         App.Servant
