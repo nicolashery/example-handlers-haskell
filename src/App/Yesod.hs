@@ -26,22 +26,27 @@ import Blammo.Logging
     Message ((:#)),
     MonadLogger (monadLoggerLog),
     logInfo,
+    logWarn,
     runLoggerLoggingT,
     (.=),
   )
 import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text (Text)
 import Lens.Micro (lens)
+import Network.HTTP.Types (Status, status409)
 import Network.Wai.Handler.Warp (run)
 import UnliftIO.Async (concurrently)
 import Yesod.Core
-  ( Yesod (messageLoggerSource),
+  ( MonadHandler,
+    Yesod (messageLoggerSource),
     getsYesod,
     mkYesod,
     parseRoutes,
     renderRoute,
+    sendResponseStatus,
     toWaiAppPlain,
   )
 
@@ -74,8 +79,14 @@ instance Yesod App where
   messageLoggerSource app _logger loc source level msg =
     runLoggerLoggingT app $ monadLoggerLog loc source level msg
 
+sendStatusText :: (MonadHandler m) => Status -> Text -> m a
+sendStatusText = sendResponseStatus
+
 postCartPurchaseR :: Text -> Handler Text
 postCartPurchaseR cartId = do
+  when (cartId == "def456") $ do
+    logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
+    sendStatusText status409 "Cart already purchased"
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- getsYesod (configPaymentMaxRetries . appConfig)
   (bookingId, paymentId) <-

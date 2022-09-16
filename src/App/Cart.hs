@@ -24,7 +24,7 @@ newBookingPayload = BookingPayload
 
 processBooking :: (MonadIO m, MonadLogger m) => BookingPayload -> m BookingId
 processBooking _ = do
-  logInfo $ "Booking starting"
+  logInfo "Booking starting"
   liftIO $ threadDelay (2 * 1000 * 1000)
   let bookingId = BookingId "TKCY693D5ACB"
   logInfo $ "Booking successful" :# ["booking_id" .= unBookingId bookingId]
@@ -39,7 +39,7 @@ newPaymentPayload = PaymentPayload
 
 processPayment :: (MonadIO m, MonadLogger m) => PaymentPayload -> m PaymentId
 processPayment _ = do
-  logInfo $ "Payment starting"
+  logInfo "Payment starting"
   liftIO $ threadDelay (1 * 1000 * 1000)
   let paymentId = PaymentId "zTNBbSdy3vdOSnRT3xzFHviB"
   logInfo $ "Payment successful" :# ["payment_id" .= unPaymentId paymentId]

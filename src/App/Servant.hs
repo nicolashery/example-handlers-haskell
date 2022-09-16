@@ -9,10 +9,15 @@ import Blammo.Logging
     Message ((:#)),
     MonadLogger (monadLoggerLog),
     logInfo,
+    logWarn,
     runLoggerLoggingT,
     (.=),
   )
 import Blammo.Logging.Simple (newLoggerEnv)
+import Control.Concurrent (threadDelay)
+import Control.Monad (when)
+import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
 import Data.Text (Text)
@@ -25,6 +30,8 @@ import Servant
     PlainText,
     Post,
     Proxy (Proxy),
+    ServerError (errBody),
+    err409,
     hoistServer,
     serve,
     (:>),
@@ -52,7 +59,7 @@ appInit = do
 newtype AppM a = AppM
   { unAppM :: ReaderT App (LoggingT Handler) a
   }
-  deriving (Functor, Applicative, Monad, MonadReader App)
+  deriving (Functor, Applicative, Monad, MonadReader App, MonadIO, MonadError ServerError)
 
 instance MonadLogger AppM where
   monadLoggerLog loc logSource logLevel msg =
@@ -65,8 +72,12 @@ type Api = "cart" :> Capture "cartId" Text :> "purchase" :> Post '[PlainText] Te
 
 postCartPurchaseHandler :: Text -> AppM Text
 postCartPurchaseHandler cartId = do
+  when (cartId == "def456") $ do
+    logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
+    throwError $ err409 {errBody = "Cart already purchased"}
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
+  liftIO $ threadDelay (100 * 1000)
   let response =
         mconcat
           [ "cartId: ",

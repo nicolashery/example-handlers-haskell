@@ -22,19 +22,31 @@ import Blammo.Logging
     Message ((:#)),
     MonadLogger (monadLoggerLog),
     logInfo,
+    logWarn,
     runLoggerLoggingT,
     (.=),
   )
 import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
 import Data.Text.Lazy qualified as TL
 import Lens.Micro (lens)
+import Network.HTTP.Types (status409)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (concurrently)
-import Web.Scotty.Trans (ActionT, ScottyError, ScottyT, param, post, scottyT, text)
+import Web.Scotty.Trans
+  ( ActionT,
+    ScottyError,
+    ScottyT,
+    param,
+    post,
+    raiseStatus,
+    scottyT,
+    text,
+  )
 
 data App = App
   { appConfig :: Config,
@@ -76,6 +88,9 @@ runApp m = do
 postCartPurchaseHandler :: ActionT TL.Text AppM ()
 postCartPurchaseHandler = do
   cartId <- param "cartId"
+  when (cartId == "def456") $ do
+    logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
+    raiseStatus status409 "Cart already purchased"
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
   (bookingId, paymentId) <-
