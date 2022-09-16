@@ -93,9 +93,23 @@ library
         , yesod-core ^>= 1.6
     hs-source-dirs: src
 
-executable example-handlers
+executable example-scotty
     import: options
-    main-is:          Main.hs
+    main-is: MainScotty.hs
     build-depends:
         example-handlers
-    hs-source-dirs:   app
+    hs-source-dirs: app
+
+executable example-yesod
+    import: options
+    main-is: MainYesod.hs
+    build-depends:
+        example-handlers
+    hs-source-dirs: app
+
+executable example-servant
+    import: options
+    main-is: MainServant.hs
+    build-depends:
+        example-handlers
+    hs-source-dirs: app
