@@ -1,6 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module App.Yesod
   ( main,
@@ -12,9 +13,8 @@ where
 
 import App.Cart
   ( BookingId (unBookingId),
+    CartId (CartId, unCartId),
     PaymentId (unPaymentId),
-    newBookingPayload,
-    newPaymentPayload,
     processBooking,
     processPayment,
   )
@@ -41,6 +41,7 @@ import Network.Wai.Handler.Warp (run)
 import UnliftIO.Async (concurrently)
 import Yesod.Core
   ( MonadHandler,
+    PathPiece,
     Yesod (messageLoggerSource),
     getsYesod,
     mkYesod,
@@ -72,8 +73,10 @@ appInit = do
 mkYesod
   "App"
   [parseRoutes|
-  /cart/#Text/purchase CartPurchaseR POST
+  /cart/#CartId/purchase CartPurchaseR POST
 |]
+
+deriving instance PathPiece CartId
 
 instance Yesod App where
   messageLoggerSource app _logger loc source level msg =
@@ -82,20 +85,20 @@ instance Yesod App where
 sendStatusText :: (MonadHandler m) => Status -> Text -> m a
 sendStatusText = sendResponseStatus
 
-postCartPurchaseR :: Text -> Handler Text
+postCartPurchaseR :: CartId -> Handler Text
 postCartPurchaseR cartId = do
-  when (cartId == "def456") $ do
+  when (cartId == CartId "def456") $ do
     logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
     sendStatusText status409 "Cart already purchased"
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- getsYesod (configPaymentMaxRetries . appConfig)
   (bookingId, paymentId) <-
-    concurrently (processBooking newBookingPayload) (processPayment newPaymentPayload)
+    concurrently (processBooking cartId) (processPayment cartId)
   liftIO $ threadDelay (100 * 1000)
   let response =
         mconcat
           [ "cartId: ",
-            cartId,
+            unCartId cartId,
             "\n",
             "paymentMaxRetries: ",
             tshow paymentMaxRetries,

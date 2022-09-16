@@ -1,5 +1,10 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module App.Servant (main) where
 
+import App.Cart
+  ( CartId (CartId, unCartId),
+  )
 import App.Config (Config (configPaymentMaxRetries), configInit)
 import App.Text (tshow)
 import Blammo.Logging
@@ -25,6 +30,7 @@ import Lens.Micro (lens)
 import Network.Wai.Handler.Warp (run)
 import Servant
   ( Capture,
+    FromHttpApiData,
     Handler,
     HasServer (ServerT),
     PlainText,
@@ -68,11 +74,13 @@ instance MonadLogger AppM where
 appToHandler :: App -> AppM a -> Handler a
 appToHandler app m = runLoggerLoggingT app $ runReaderT (unAppM m) app
 
-type Api = "cart" :> Capture "cartId" Text :> "purchase" :> Post '[PlainText] Text
+type Api = "cart" :> Capture "cartId" CartId :> "purchase" :> Post '[PlainText] Text
 
-postCartPurchaseHandler :: Text -> AppM Text
+deriving instance FromHttpApiData CartId
+
+postCartPurchaseHandler :: CartId -> AppM Text
 postCartPurchaseHandler cartId = do
-  when (cartId == "def456") $ do
+  when (cartId == CartId "def456") $ do
     logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
     throwError $ err409 {errBody = "Cart already purchased"}
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
@@ -81,7 +89,7 @@ postCartPurchaseHandler cartId = do
   let response =
         mconcat
           [ "cartId: ",
-            cartId,
+            unCartId cartId,
             "\n",
             "paymentMaxRetries: ",
             tshow paymentMaxRetries,

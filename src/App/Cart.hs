@@ -1,11 +1,8 @@
 module App.Cart
-  ( BookingId (BookingId, unBookingId),
-    BookingPayload,
-    newBookingPayload,
+  ( CartId (CartId, unCartId),
+    BookingId (BookingId, unBookingId),
     processBooking,
     PaymentId (PaymentId, unPaymentId),
-    PaymentPayload,
-    newPaymentPayload,
     processPayment,
   )
 where
@@ -13,16 +10,15 @@ where
 import Blammo.Logging (Message ((:#)), MonadLogger, logInfo, (.=))
 import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Aeson (ToJSON)
 import Data.Text (Text)
+
+newtype CartId = CartId {unCartId :: Text}
+  deriving (Eq, Read, Show, ToJSON)
 
 newtype BookingId = BookingId {unBookingId :: Text}
 
-data BookingPayload = BookingPayload
-
-newBookingPayload :: BookingPayload
-newBookingPayload = BookingPayload
-
-processBooking :: (MonadIO m, MonadLogger m) => BookingPayload -> m BookingId
+processBooking :: (MonadIO m, MonadLogger m) => CartId -> m BookingId
 processBooking _ = do
   logInfo "Booking starting"
   liftIO $ threadDelay (2 * 1000 * 1000)
@@ -32,12 +28,7 @@ processBooking _ = do
 
 newtype PaymentId = PaymentId {unPaymentId :: Text}
 
-data PaymentPayload = PaymentPayload
-
-newPaymentPayload :: PaymentPayload
-newPaymentPayload = PaymentPayload
-
-processPayment :: (MonadIO m, MonadLogger m) => PaymentPayload -> m PaymentId
+processPayment :: (MonadIO m, MonadLogger m) => CartId -> m PaymentId
 processPayment _ = do
   logInfo "Payment starting"
   liftIO $ threadDelay (1 * 1000 * 1000)

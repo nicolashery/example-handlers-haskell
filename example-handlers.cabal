@@ -82,6 +82,7 @@ library
         App.Text
         App.Yesod
     build-depends:
+        , aeson ^>= 2.1
         , Blammo ^>= 1.0
         , http-types ^>= 0.12
         , microlens ^>= 0.4

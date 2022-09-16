@@ -7,9 +7,8 @@ where
 
 import App.Cart
   ( BookingId (unBookingId),
+    CartId (CartId, unCartId),
     PaymentId (unPaymentId),
-    newBookingPayload,
-    newPaymentPayload,
     processBooking,
     processPayment,
   )
@@ -87,19 +86,19 @@ runApp m = do
 
 postCartPurchaseHandler :: ActionT TL.Text AppM ()
 postCartPurchaseHandler = do
-  cartId <- param "cartId"
-  when (cartId == "def456") $ do
+  cartId <- CartId <$> param "cartId"
+  when (cartId == CartId "def456") $ do
     logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
     raiseStatus status409 "Cart already purchased"
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
   (bookingId, paymentId) <-
-    lift $ concurrently (processBooking newBookingPayload) (processPayment newPaymentPayload)
+    lift $ concurrently (processBooking cartId) (processPayment cartId)
   liftIO $ threadDelay (100 * 1000)
   let response =
         mconcat
           [ "cartId: ",
-            cartId,
+            TL.fromStrict $ unCartId cartId,
             "\n",
             "paymentMaxRetries: ",
             tlshow paymentMaxRetries,
