@@ -13,6 +13,7 @@ where
 
 import App.Cart
   ( BookingId (unBookingId),
+    CartException (CartException),
     CartId (CartId, unCartId),
     PaymentId (unPaymentId),
     processBooking,
@@ -36,9 +37,10 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text (Text)
 import Lens.Micro (lens)
-import Network.HTTP.Types (Status, status409)
+import Network.HTTP.Types (Status, status409, status500)
 import Network.Wai.Handler.Warp (run)
 import UnliftIO.Async (concurrently)
+import UnliftIO.Exception (catch)
 import Yesod.Core
   ( MonadHandler,
     PathPiece,
@@ -92,26 +94,34 @@ postCartPurchaseR cartId = do
     sendStatusText status409 "Cart already purchased"
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- getsYesod (configPaymentMaxRetries . appConfig)
-  (bookingId, paymentId) <-
-    concurrently (processBooking cartId) (processPayment cartId)
-  liftIO $ threadDelay (100 * 1000)
-  let response =
-        mconcat
-          [ "cartId: ",
-            unCartId cartId,
-            "\n",
-            "paymentMaxRetries: ",
-            tshow paymentMaxRetries,
-            "\n",
-            "bookingId: ",
-            unBookingId bookingId,
-            "\n",
-            "paymentId: ",
-            unPaymentId paymentId,
-            "\n"
-          ]
-  logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
-  pure response
+  let action :: Handler (Either Text (BookingId, PaymentId))
+      action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
+      handler :: CartException -> Handler (Either Text (BookingId, PaymentId))
+      handler (CartException msg) = pure $ Left msg
+  result <- catch action handler
+  case result of
+    Left msg -> do
+      logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
+      sendStatusText status500 ("Cart purchase failed: " <> msg)
+    Right (bookingId, paymentId) -> do
+      liftIO $ threadDelay (100 * 1000)
+      let response =
+            mconcat
+              [ "cartId: ",
+                unCartId cartId,
+                "\n",
+                "paymentMaxRetries: ",
+                tshow paymentMaxRetries,
+                "\n",
+                "bookingId: ",
+                unBookingId bookingId,
+                "\n",
+                "paymentId: ",
+                unPaymentId paymentId,
+                "\n"
+              ]
+      logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
+      pure response
 
 main :: IO ()
 main = do

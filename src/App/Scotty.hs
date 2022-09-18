@@ -7,6 +7,7 @@ where
 
 import App.Cart
   ( BookingId (unBookingId),
+    CartException (CartException),
     CartId (CartId, unCartId),
     PaymentId (unPaymentId),
     processBooking,
@@ -31,11 +32,13 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
+import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
 import Lens.Micro (lens)
-import Network.HTTP.Types (status409)
+import Network.HTTP.Types (status409, status500)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (concurrently)
+import UnliftIO.Exception (catch)
 import Web.Scotty.Trans
   ( ActionT,
     ScottyError,
@@ -92,26 +95,34 @@ postCartPurchaseHandler = do
     raiseStatus status409 "Cart already purchased"
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
-  (bookingId, paymentId) <-
-    lift $ concurrently (processBooking cartId) (processPayment cartId)
-  liftIO $ threadDelay (100 * 1000)
-  let response =
-        mconcat
-          [ "cartId: ",
-            TL.fromStrict $ unCartId cartId,
-            "\n",
-            "paymentMaxRetries: ",
-            tlshow paymentMaxRetries,
-            "\n",
-            "bookingId: ",
-            TL.fromStrict $ unBookingId bookingId,
-            "\n",
-            "paymentId: ",
-            TL.fromStrict $ unPaymentId paymentId,
-            "\n"
-          ]
-  logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
-  text response
+  let action :: AppM (Either Text (BookingId, PaymentId))
+      action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
+      handler :: CartException -> AppM (Either Text (BookingId, PaymentId))
+      handler (CartException msg) = pure $ Left msg
+  result <- lift $ catch action handler
+  case result of
+    Left msg -> do
+      logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
+      raiseStatus status500 ("Cart purchase failed: " <> TL.fromStrict msg)
+    Right (bookingId, paymentId) -> do
+      liftIO $ threadDelay (100 * 1000)
+      let response =
+            mconcat
+              [ "cartId: ",
+                TL.fromStrict $ unCartId cartId,
+                "\n",
+                "paymentMaxRetries: ",
+                tlshow paymentMaxRetries,
+                "\n",
+                "bookingId: ",
+                TL.fromStrict $ unBookingId bookingId,
+                "\n",
+                "paymentId: ",
+                TL.fromStrict $ unPaymentId paymentId,
+                "\n"
+              ]
+      logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
+      text response
 
 application :: ScottyT TL.Text AppM ()
 application = do
