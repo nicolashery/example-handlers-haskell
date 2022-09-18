@@ -21,7 +21,7 @@ import Blammo.Logging
 import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
 import Control.Monad (when)
-import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
@@ -31,7 +31,7 @@ import Network.Wai.Handler.Warp (run)
 import Servant
   ( Capture,
     FromHttpApiData,
-    Handler,
+    Handler (Handler),
     HasServer (ServerT),
     PlainText,
     Post,
@@ -42,6 +42,7 @@ import Servant
     serve,
     (:>),
   )
+import UnliftIO.Exception (throwIO, try)
 
 data App = App
   { appConfig :: Config,
@@ -63,16 +64,17 @@ appInit = do
   pure app
 
 newtype AppM a = AppM
-  { unAppM :: ReaderT App (LoggingT Handler) a
+  { unAppM :: ReaderT App (LoggingT IO) a
   }
-  deriving (Functor, Applicative, Monad, MonadReader App, MonadIO, MonadError ServerError)
+  deriving (Functor, Applicative, Monad, MonadReader App, MonadIO)
 
 instance MonadLogger AppM where
   monadLoggerLog loc logSource logLevel msg =
     AppM $ lift $ monadLoggerLog loc logSource logLevel msg
 
 appToHandler :: App -> AppM a -> Handler a
-appToHandler app m = runLoggerLoggingT app $ runReaderT (unAppM m) app
+appToHandler app m =
+  Handler $ ExceptT $ try $ runLoggerLoggingT app $ runReaderT (unAppM m) app
 
 type Api = "cart" :> Capture "cartId" CartId :> "purchase" :> Post '[PlainText] Text
 
@@ -82,7 +84,7 @@ postCartPurchaseHandler :: CartId -> AppM Text
 postCartPurchaseHandler cartId = do
   when (cartId == CartId "def456") $ do
     logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
-    throwError $ err409 {errBody = "Cart already purchased"}
+    throwIO $ err409 {errBody = "Cart already purchased"}
   logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
   paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
   liftIO $ threadDelay (100 * 1000)
