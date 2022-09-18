@@ -32,6 +32,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
+import Data.String.Conversions (cs)
 import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
 import Lens.Micro (lens)
@@ -103,22 +104,22 @@ postCartPurchaseHandler = do
   case result of
     Left msg -> do
       logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
-      raiseStatus status500 ("Cart purchase failed: " <> TL.fromStrict msg)
+      raiseStatus status500 (cs $ "Cart purchase failed: " <> msg)
     Right (bookingId, paymentId) -> do
       liftIO $ threadDelay (100 * 1000)
       let response =
             mconcat
               [ "cartId: ",
-                TL.fromStrict $ unCartId cartId,
+                cs $ unCartId cartId,
                 "\n",
                 "paymentMaxRetries: ",
                 tlshow paymentMaxRetries,
                 "\n",
                 "bookingId: ",
-                TL.fromStrict $ unBookingId bookingId,
+                cs $ unBookingId bookingId,
                 "\n",
                 "paymentId: ",
-                TL.fromStrict $ unPaymentId paymentId,
+                cs $ unPaymentId paymentId,
                 "\n"
               ]
       logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
