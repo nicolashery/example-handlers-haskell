@@ -6,11 +6,15 @@ import App.Cart
   ( BookingId (unBookingId),
     CartException (CartException),
     CartId (CartId, unCartId),
+    HasCartConfig (getBookingUrl, getPaymentUrl),
     PaymentId (unPaymentId),
     processBooking,
     processPayment,
   )
-import App.Config (Config (configPaymentMaxRetries), configInit)
+import App.Config
+  ( Config (configBookingUrl, configPaymentMaxRetries, configPaymentUrl),
+    configInit,
+  )
 import App.Text (tshow)
 import Blammo.Logging
   ( HasLogger (loggerL),
@@ -60,6 +64,10 @@ data App = App
 
 instance HasLogger App where
   loggerL = lens appLogger $ \x y -> x {appLogger = y}
+
+instance HasCartConfig App where
+  getBookingUrl = configBookingUrl . appConfig
+  getPaymentUrl = configPaymentUrl . appConfig
 
 appInit :: IO App
 appInit = do

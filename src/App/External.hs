@@ -1,8 +1,8 @@
 module App.External
   ( main,
     -- Suppress 'defined but not used warnings'
-    PaymentId (unPaymentId),
     BookingId (unBookingId),
+    PaymentId (unPaymentId),
   )
 where
 
@@ -30,27 +30,6 @@ import Servant
     type (:<|>) ((:<|>)),
   )
 
-newtype PaymentId = PaymentId {unPaymentId :: Text}
-  deriving (ToJSON)
-
-data PaymentRequest = PaymentRequest
-  { paymentRequestCardholderName :: Text,
-    paymentRequestCardNumber :: Text
-  }
-  deriving (Generic)
-
-instance FromJSON PaymentRequest where
-  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 14}
-
-data PaymentResponse = PaymentResponse
-  { paymentResponsePaymentId :: PaymentId,
-    paymentResponseAmountCharged :: Int
-  }
-  deriving (Generic)
-
-instance ToJSON PaymentResponse where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
-
 newtype BookingId = BookingId {unBookingId :: Text}
   deriving (ToJSON)
 
@@ -72,17 +51,30 @@ data BookingResponse = BookingResponse
 instance ToJSON BookingResponse where
   toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
 
-type Api =
-  "payment" :> ReqBody '[JSON] PaymentRequest :> Post '[JSON] PaymentResponse
-    :<|> "booking" :> ReqBody '[JSON] BookingRequest :> Post '[JSON] BookingResponse
+newtype PaymentId = PaymentId {unPaymentId :: Text}
+  deriving (ToJSON)
 
-postPaymentHandler :: PaymentRequest -> Handler PaymentResponse
-postPaymentHandler _ =
-  pure $
-    PaymentResponse
-      { paymentResponsePaymentId = PaymentId "zTNBbSdy3vdOSnRT3xzFHviB",
-        paymentResponseAmountCharged = 5200
-      }
+data PaymentRequest = PaymentRequest
+  { paymentRequestCardholderName :: Text,
+    paymentRequestCardNumber :: Text
+  }
+  deriving (Generic)
+
+instance FromJSON PaymentRequest where
+  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 14}
+
+data PaymentResponse = PaymentResponse
+  { paymentResponsePaymentId :: PaymentId,
+    paymentResponseAmountCharged :: Int
+  }
+  deriving (Generic)
+
+instance ToJSON PaymentResponse where
+  toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
+
+type Api =
+  "booking" :> ReqBody '[JSON] BookingRequest :> Post '[JSON] BookingResponse
+    :<|> "payment" :> ReqBody '[JSON] PaymentRequest :> Post '[JSON] PaymentResponse
 
 postBookingHandler :: BookingRequest -> Handler BookingResponse
 postBookingHandler _ =
@@ -92,10 +84,18 @@ postBookingHandler _ =
         bookingResponseSeatsReserved = 3
       }
 
+postPaymentHandler :: PaymentRequest -> Handler PaymentResponse
+postPaymentHandler _ =
+  pure $
+    PaymentResponse
+      { paymentResponsePaymentId = PaymentId "zTNBbSdy3vdOSnRT3xzFHviB",
+        paymentResponseAmountCharged = 5200
+      }
+
 server :: Server Api
 server =
-  postPaymentHandler
-    :<|> postBookingHandler
+  postBookingHandler
+    :<|> postPaymentHandler
 
 api :: Proxy Api
 api = Proxy
