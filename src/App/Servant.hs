@@ -37,6 +37,11 @@ import Control.Monad.Trans (lift)
 import Data.String.Conversions (cs)
 import Data.Text (Text)
 import Lens.Micro (lens)
+import Network.HTTP.Req
+  ( HttpConfig,
+    MonadHttp (getHttpConfig, handleHttpException),
+    defaultHttpConfig,
+  )
 import Network.Wai.Handler.Warp (run)
 import Servant
   ( Capture,
@@ -59,7 +64,8 @@ import UnliftIO.Exception (catch, throwIO, try)
 
 data App = App
   { appConfig :: Config,
-    appLogger :: Logger
+    appLogger :: Logger,
+    appHttpConfig :: HttpConfig
   }
 
 instance HasLogger App where
@@ -76,7 +82,8 @@ appInit = do
   let app =
         App
           { appConfig = config,
-            appLogger = logger
+            appLogger = logger,
+            appHttpConfig = defaultHttpConfig
           }
   pure app
 
@@ -88,6 +95,10 @@ newtype AppM a = AppM
 instance MonadLogger AppM where
   monadLoggerLog loc logSource logLevel msg =
     AppM $ lift $ monadLoggerLog loc logSource logLevel msg
+
+instance MonadHttp AppM where
+  handleHttpException = throwIO
+  getHttpConfig = asks appHttpConfig
 
 appToHandler :: App -> AppM a -> Handler a
 appToHandler app m =

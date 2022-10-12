@@ -41,8 +41,14 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text (Text)
 import Lens.Micro (lens)
+import Network.HTTP.Req
+  ( HttpConfig,
+    MonadHttp (getHttpConfig, handleHttpException),
+    defaultHttpConfig,
+  )
 import Network.HTTP.Types (Status, status409, status500)
 import Network.Wai.Handler.Warp (run)
+import UnliftIO (throwIO)
 import UnliftIO.Async (concurrently)
 import UnliftIO.Exception (catch)
 import Yesod.Core
@@ -60,7 +66,8 @@ import Yesod.Core.Types (HandlerData (handlerEnv), RunHandlerEnv (rheSite))
 
 data App = App
   { appConfig :: Config,
-    appLogger :: Logger
+    appLogger :: Logger,
+    appHttpConfig :: HttpConfig
   }
 
 instance HasLogger App where
@@ -81,7 +88,8 @@ appInit = do
   let app =
         App
           { appConfig = config,
-            appLogger = logger
+            appLogger = logger,
+            appHttpConfig = defaultHttpConfig
           }
   pure app
 
@@ -92,6 +100,10 @@ mkYesod
 |]
 
 deriving instance PathPiece CartId
+
+instance MonadHttp Handler where
+  handleHttpException = throwIO
+  getHttpConfig = getsYesod appHttpConfig
 
 instance Yesod App where
   messageLoggerSource app _logger loc source level msg =

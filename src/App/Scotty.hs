@@ -40,8 +40,13 @@ import Data.String.Conversions (cs)
 import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
 import Lens.Micro (lens)
+import Network.HTTP.Req
+  ( HttpConfig,
+    MonadHttp (getHttpConfig, handleHttpException),
+    defaultHttpConfig,
+  )
 import Network.HTTP.Types (status409, status500)
-import UnliftIO (MonadUnliftIO)
+import UnliftIO (MonadUnliftIO, throwIO)
 import UnliftIO.Async (concurrently)
 import UnliftIO.Exception (catch)
 import Web.Scotty.Trans
@@ -57,7 +62,8 @@ import Web.Scotty.Trans
 
 data App = App
   { appConfig :: Config,
-    appLogger :: Logger
+    appLogger :: Logger,
+    appHttpConfig :: HttpConfig
   }
 
 instance HasLogger App where
@@ -74,7 +80,8 @@ appInit = do
   let app =
         App
           { appConfig = config,
-            appLogger = logger
+            appLogger = logger,
+            appHttpConfig = defaultHttpConfig
           }
   pure app
 
@@ -90,6 +97,10 @@ instance MonadLogger AppM where
 instance (ScottyError e, MonadLogger m) => MonadLogger (ActionT e m) where
   monadLoggerLog loc logSource logLevel msg =
     lift $ monadLoggerLog loc logSource logLevel msg
+
+instance MonadHttp AppM where
+  handleHttpException = throwIO
+  getHttpConfig = asks appHttpConfig
 
 runApp :: AppM a -> IO a
 runApp m = do

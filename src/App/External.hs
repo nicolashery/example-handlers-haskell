@@ -33,6 +33,9 @@ import Servant
 newtype BookingId = BookingId {unBookingId :: Text}
   deriving (ToJSON)
 
+newtype PaymentId = PaymentId {unPaymentId :: Text}
+  deriving (ToJSON)
+
 data BookingRequest = BookingRequest
   { bookingRequestShow :: Text,
     bookingRequestSeats :: [Text]
@@ -50,9 +53,6 @@ data BookingResponse = BookingResponse
 
 instance ToJSON BookingResponse where
   toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
-
-newtype PaymentId = PaymentId {unPaymentId :: Text}
-  deriving (ToJSON)
 
 data PaymentRequest = PaymentRequest
   { paymentRequestCardholderName :: Text,

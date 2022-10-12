@@ -87,7 +87,9 @@ library
         , Blammo ^>= 1.0
         , http-types ^>= 0.12
         , microlens ^>= 0.4
+        , modern-uri ^>= 0.3
         , mtl ^>= 2.2
+        , req ^>= 3.13
         , scotty ^>= 0.12
         , servant-server ^>= 0.19
         , string-conversions ^>= 0.4
