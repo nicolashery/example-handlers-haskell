@@ -9,9 +9,9 @@ module App.Cart
   )
 where
 
+import App.Req (isStatusCodeException')
 import Blammo.Logging (Message ((:#)), MonadLogger, logInfo, logWarn, (.=))
 import Control.Concurrent (threadDelay)
-import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, asks)
 import Data.Aeson
@@ -24,19 +24,24 @@ import Data.Aeson
     genericToJSON,
   )
 import Data.Maybe (fromJust)
+import Data.String.Conversions (cs)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Network.HTTP.Req
-  ( MonadHttp,
+  ( HttpException,
+    JsonResponse,
+    MonadHttp,
     POST (POST),
     ReqBodyJson (ReqBodyJson),
     jsonResponse,
     req,
     responseBody,
+    responseStatusCode,
     useHttpURI,
   )
 import Text.URI (mkURI)
-import UnliftIO (Exception, Typeable, throwIO)
+import UnliftIO (Exception, MonadUnliftIO, Typeable)
+import UnliftIO.Exception (catch, throwIO)
 
 newtype CartException = CartException Text
   deriving (Show, Typeable)
@@ -57,7 +62,7 @@ newtype PaymentId = PaymentId {unPaymentId :: Text}
   deriving (FromJSON, ToJSON)
 
 data BookingRequest = BookingRequest
-  { bookingRequestShow :: Text,
+  { bookingRequestVenue :: Text,
     bookingRequestSeats :: [Text]
   }
   deriving (Generic)
@@ -93,24 +98,39 @@ instance FromJSON PaymentResponse where
   parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
 
 processBooking ::
-  (MonadReader env m, HasCartConfig env, MonadLogger m, MonadHttp m) =>
+  forall env m.
+  (MonadReader env m, HasCartConfig env, MonadLogger m, MonadHttp m, MonadUnliftIO m) =>
   CartId ->
   m BookingId
 processBooking cartId = do
   bookingUrl <- asks getBookingUrl
   logInfo $ "Booking starting" :# ["cart_id" .= cartId, "booking_url" .= bookingUrl]
   liftIO $ threadDelay (2 * 1000 * 1000)
-  when (cartId == CartId "ghi789") $ do
-    logWarn $ "Booking failed" :# ["cart_id" .= cartId]
-    throwIO $ CartException "Booking failed"
   uri <- liftIO $ mkURI bookingUrl
   let (url, options) = fromJust (useHttpURI uri)
+      venue = if cartId == CartId "ghi789" then "TDE8751" else "HRT3974"
       bookingRequest =
         BookingRequest
-          { bookingRequestShow = "HRT3974",
+          { bookingRequestVenue = venue,
             bookingRequestSeats = ["D31", "D32", "D33"]
           }
-  response <- req POST url (ReqBodyJson bookingRequest) jsonResponse options
+      handleFailure :: HttpException -> m (JsonResponse BookingResponse)
+      handleFailure e = do
+        case isStatusCodeException' e of
+          Just (r, b) -> do
+            let statusCode = responseStatusCode r
+                msg = cs b
+            logWarn $
+              "Booking failed"
+                :# [ "cart_id" .= cartId,
+                     "status_code" .= statusCode,
+                     "response" .= msg
+                   ]
+            throwIO $ CartException ("Booking failed: " <> msg)
+          Nothing -> throwIO e
+  response <-
+    req POST url (ReqBodyJson bookingRequest) jsonResponse options
+      `catch` handleFailure
   let bookingResponse :: BookingResponse
       bookingResponse = responseBody response
       bookingId = bookingResponseBookingId bookingResponse
@@ -118,24 +138,39 @@ processBooking cartId = do
   pure bookingId
 
 processPayment ::
-  (MonadReader env m, HasCartConfig env, MonadLogger m, MonadHttp m) =>
+  forall env m.
+  (MonadReader env m, HasCartConfig env, MonadLogger m, MonadHttp m, MonadUnliftIO m) =>
   CartId ->
   m PaymentId
 processPayment cartId = do
   paymentUrl <- asks getPaymentUrl
   logInfo $ "Payment starting" :# ["cart_id" .= cartId, "payment_url" .= paymentUrl]
   liftIO $ threadDelay (1 * 1000 * 1000)
-  when (cartId == CartId "ghi789") $ do
-    logWarn $ "Payment failed" :# ["cart_id" .= cartId]
-    throwIO $ CartException "Booking failed"
   uri <- liftIO $ mkURI paymentUrl
   let (url, options) = fromJust (useHttpURI uri)
+      cardNumber = if cartId == CartId "ghi789" then "a192901463306478" else "5192901463306478"
       paymentRequest =
         PaymentRequest
           { paymentRequestCardholderName = "John Doe",
-            paymentRequestCardNumber = "5192901463306478"
+            paymentRequestCardNumber = cardNumber
           }
-  response <- req POST url (ReqBodyJson paymentRequest) jsonResponse options
+      handleFailure :: HttpException -> m (JsonResponse PaymentResponse)
+      handleFailure e = do
+        case isStatusCodeException' e of
+          Just (r, b) -> do
+            let statusCode = responseStatusCode r
+                msg = cs b
+            logWarn $
+              "Payment failed"
+                :# [ "cart_id" .= cartId,
+                     "status_code" .= statusCode,
+                     "response" .= msg
+                   ]
+            throwIO $ CartException ("Payment failed: " <> msg)
+          Nothing -> throwIO e
+  response <-
+    req POST url (ReqBodyJson paymentRequest) jsonResponse options
+      `catch` handleFailure
   let paymentResponse :: PaymentResponse
       paymentResponse = responseBody response
       paymentId = paymentResponsePaymentId paymentResponse

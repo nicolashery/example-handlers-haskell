@@ -78,6 +78,7 @@ library
         App.Cart
         App.Config
         App.External
+        App.Req
         App.Scotty
         App.Servant
         App.Text
@@ -85,6 +86,8 @@ library
     build-depends:
         , aeson ^>= 2.1
         , Blammo ^>= 1.0
+        , bytestring ^>= 0.10
+        , http-client ^>= 0.7
         , http-types ^>= 0.12
         , microlens ^>= 0.4
         , modern-uri ^>= 0.3

@@ -6,6 +6,8 @@ module App.External
   )
 where
 
+import Control.Monad (when)
+import Control.Monad.Except (MonadError (throwError))
 import Data.Aeson
   ( FromJSON (parseJSON),
     Options (fieldLabelModifier),
@@ -25,6 +27,8 @@ import Servant
     Proxy (Proxy),
     ReqBody,
     Server,
+    ServerError (errBody),
+    err400,
     serve,
     (:>),
     type (:<|>) ((:<|>)),
@@ -37,7 +41,7 @@ newtype PaymentId = PaymentId {unPaymentId :: Text}
   deriving (ToJSON)
 
 data BookingRequest = BookingRequest
-  { bookingRequestShow :: Text,
+  { bookingRequestVenue :: Text,
     bookingRequestSeats :: [Text]
   }
   deriving (Generic)
@@ -77,7 +81,9 @@ type Api =
     :<|> "payment" :> ReqBody '[JSON] PaymentRequest :> Post '[JSON] PaymentResponse
 
 postBookingHandler :: BookingRequest -> Handler BookingResponse
-postBookingHandler _ =
+postBookingHandler BookingRequest {bookingRequestVenue = venue} = do
+  when (venue == "TDE8751") $ do
+    throwError $ err400 {errBody = "Invalid venue"}
   pure $
     BookingResponse
       { bookingResponseBookingId = BookingId "TKCY693D5ACB",
@@ -85,7 +91,9 @@ postBookingHandler _ =
       }
 
 postPaymentHandler :: PaymentRequest -> Handler PaymentResponse
-postPaymentHandler _ =
+postPaymentHandler PaymentRequest {paymentRequestCardNumber = cardNumber} = do
+  when (cardNumber == "a192901463306478") $ do
+    throwError $ err400 {errBody = "Invalid card number"}
   pure $
     PaymentResponse
       { paymentResponsePaymentId = PaymentId "zTNBbSdy3vdOSnRT3xzFHviB",
