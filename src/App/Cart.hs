@@ -1,14 +1,19 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module App.Cart
   ( CartException (CartException),
     CartId (CartId, unCartId),
     BookingId (BookingId, unBookingId),
     PaymentId (PaymentId, unPaymentId),
     HasCartConfig (getBookingUrl, getPaymentUrl),
+    CartStatus (CartStatusOpen, CartStatusLocked, CartStatusPurchased),
+    getCartStatus,
     processBooking,
     processPayment,
   )
 where
 
+import App.Db (HasDbPool, withConn)
 import App.Req (isStatusCodeException')
 import Blammo.Logging (Message ((:#)), MonadLogger, logInfo, logWarn, (.=))
 import Control.Concurrent (threadDelay)
@@ -26,6 +31,10 @@ import Data.Aeson
 import Data.Maybe (fromJust)
 import Data.String.Conversions (cs)
 import Data.Text (Text)
+import Database.PostgreSQL.Simple (Only (Only), ResultError (ConversionFailed, UnexpectedNull), query)
+import Database.PostgreSQL.Simple.FromField (FromField (fromField), returnError)
+import Database.PostgreSQL.Simple.SqlQQ (sql)
+import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Network.HTTP.Req
   ( HttpException,
@@ -49,7 +58,7 @@ newtype CartException = CartException Text
 instance Exception CartException
 
 newtype CartId = CartId {unCartId :: Text}
-  deriving (Eq, Read, Show, ToJSON)
+  deriving (Eq, Read, Show, Generic, ToJSON, ToField)
 
 class HasCartConfig env where
   getBookingUrl :: env -> Text
@@ -96,6 +105,31 @@ data PaymentResponse = PaymentResponse
 
 instance FromJSON PaymentResponse where
   parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
+
+data CartStatus
+  = CartStatusOpen
+  | CartStatusLocked
+  | CartStatusPurchased
+  deriving (Eq)
+
+instance FromField CartStatus where
+  fromField f Nothing = returnError UnexpectedNull f ""
+  fromField f (Just bs) =
+    case bs of
+      "open" -> pure CartStatusOpen
+      "locked" -> pure CartStatusLocked
+      "purchased" -> pure CartStatusPurchased
+      _ -> returnError ConversionFailed f ""
+
+getCartStatus :: (MonadReader env m, HasDbPool env, MonadIO m) => CartId -> m (Maybe CartStatus)
+getCartStatus cartId = do
+  result <- withConn $ \conn -> query conn qry args
+  case result of
+    [Only cartStatus] -> pure $ Just cartStatus
+    _ -> pure Nothing
+  where
+    qry = [sql|select status from carts where id = ? limit 1|]
+    args = Only cartId
 
 processBooking ::
   forall env m.

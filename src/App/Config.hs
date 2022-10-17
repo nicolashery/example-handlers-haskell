@@ -20,7 +20,8 @@ data Config = Config
   { configPaymentMaxRetries :: Int,
     configPaymentRetryDelay :: Int,
     configBookingUrl :: Text,
-    configPaymentUrl :: Text
+    configPaymentUrl :: Text,
+    configDatabaseUrl :: Text
   }
 
 readEnvMaybe :: (Read a) => String -> IO (Maybe a)
@@ -39,11 +40,13 @@ configInit = do
   paymentRetryDelay <- readEnvDefault 2000 "PAYMENT_RETRY_DELAY"
   bookingUrl <- readEnvDefault "http://localhost:3001/booking" "BOOKING_URL"
   paymentUrl <- readEnvDefault "http://localhost:3001/payment" "PAYMENT_URL"
+  databaseUrl <- readEnvDefault "postgresql://example_haskell:example_haskell@localhost/example_haskell" "DATABASE_URL"
   let config =
         Config
           { configPaymentMaxRetries = paymentMaxRetries,
             configPaymentRetryDelay = paymentRetryDelay,
             configBookingUrl = bookingUrl,
-            configPaymentUrl = paymentUrl
+            configPaymentUrl = paymentUrl,
+            configDatabaseUrl = databaseUrl
           }
   pure config
