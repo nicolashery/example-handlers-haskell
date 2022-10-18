@@ -4,7 +4,8 @@ module App.Config
         configPaymentMaxRetries,
         configPaymentRetryDelay,
         configBookingUrl,
-        configPaymentUrl
+        configPaymentUrl,
+        configDatabaseUrl
       ),
     configInit,
   )

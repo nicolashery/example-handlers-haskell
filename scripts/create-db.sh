@@ -7,7 +7,7 @@ CREATE ROLE example_haskell WITH LOGIN PASSWORD 'example_haskell';
 GRANT ALL PRIVILEGES ON DATABASE example_haskell TO example_haskell;
 EOF
 
-sudo -u postgres psql -d example_haskell <<EOF
+psql $DATABASE_URL <<EOF
 CREATE TYPE cart_status AS ENUM ('open', 'locked', 'purchased');
 
 CREATE TABLE carts (
