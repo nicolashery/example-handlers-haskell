@@ -5,7 +5,7 @@ module App.Db
   )
 where
 
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (MonadReader, asks)
 import Data.Pool
   ( Pool,
@@ -16,6 +16,7 @@ import Data.Pool
 import Data.String.Conversions (cs)
 import Data.Text (Text)
 import Database.PostgreSQL.Simple (Connection, close, connectPostgreSQL)
+import UnliftIO (MonadUnliftIO)
 
 class HasDbPool env where
   getDbPool :: env -> Pool Connection
@@ -32,7 +33,7 @@ dbInit databaseUrl =
    in newPool poolConfig
 
 withConn ::
-  (MonadReader env m, HasDbPool env, MonadIO m) => (Connection -> IO a) -> m a
+  (MonadReader env m, HasDbPool env, MonadUnliftIO m) => (Connection -> IO a) -> m a
 withConn action = do
   pool <- asks getDbPool
   liftIO $ withResource pool action

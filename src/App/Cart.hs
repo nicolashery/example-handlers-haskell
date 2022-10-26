@@ -121,7 +121,7 @@ instance FromField CartStatus where
       "purchased" -> pure CartStatusPurchased
       _ -> returnError ConversionFailed f ""
 
-getCartStatus :: (MonadReader env m, HasDbPool env, MonadIO m) => CartId -> m (Maybe CartStatus)
+getCartStatus :: (MonadReader env m, HasDbPool env, MonadUnliftIO m) => CartId -> m (Maybe CartStatus)
 getCartStatus cartId = do
   result <- withConn $ \conn -> query conn qry args
   case result of

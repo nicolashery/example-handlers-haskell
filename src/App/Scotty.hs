@@ -125,7 +125,7 @@ runApp m = do
 postCartPurchaseHandler :: ActionT TL.Text AppM ()
 postCartPurchaseHandler = do
   cartId <- CartId <$> param "cartId"
-  cartStatusMaybe <- getCartStatus cartId
+  cartStatusMaybe <- lift $ getCartStatus cartId
   case cartStatusMaybe of
     Nothing -> do
       logWarn $ "Cart does not exist" :# ["cart_id" .= cartId]
