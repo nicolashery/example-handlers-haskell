@@ -8,6 +8,8 @@ module App.Cart
     HasCartConfig (getBookingUrl, getPaymentUrl),
     CartStatus (CartStatusOpen, CartStatusLocked, CartStatusPurchased),
     getCartStatus,
+    lockCart,
+    unlockCart,
     processBooking,
     processPayment,
   )
@@ -17,6 +19,7 @@ import App.Db (HasDbPool, withConn)
 import App.Req (isStatusCodeException')
 import Blammo.Logging (Message ((:#)), MonadLogger, logInfo, logWarn, (.=))
 import Control.Concurrent (threadDelay)
+import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, asks)
 import Data.Aeson
@@ -31,10 +34,16 @@ import Data.Aeson
 import Data.Maybe (fromJust)
 import Data.String.Conversions (cs)
 import Data.Text (Text)
-import Database.PostgreSQL.Simple (Only (Only), ResultError (ConversionFailed, UnexpectedNull), query)
+import Data.Text.Encoding (decodeUtf8)
+import Database.PostgreSQL.Simple
+  ( Only (Only),
+    ResultError (ConversionFailed, UnexpectedNull),
+    execute,
+    query,
+  )
 import Database.PostgreSQL.Simple.FromField (FromField (fromField), returnError)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
-import Database.PostgreSQL.Simple.ToField (ToField)
+import Database.PostgreSQL.Simple.ToField (ToField (toField))
 import GHC.Generics (Generic)
 import Network.HTTP.Req
   ( HttpException,
@@ -112,24 +121,84 @@ data CartStatus
   | CartStatusPurchased
   deriving (Eq)
 
-instance FromField CartStatus where
-  fromField f Nothing = returnError UnexpectedNull f ""
-  fromField f (Just bs) =
-    case bs of
-      "open" -> pure CartStatusOpen
-      "locked" -> pure CartStatusLocked
-      "purchased" -> pure CartStatusPurchased
-      _ -> returnError ConversionFailed f ""
+cartStatusFromText :: Text -> Maybe CartStatus
+cartStatusFromText v = case v of
+  "open" -> Just CartStatusOpen
+  "locked" -> Just CartStatusLocked
+  "purchased" -> Just CartStatusPurchased
+  _ -> Nothing
 
-getCartStatus :: (MonadReader env m, HasDbPool env, MonadUnliftIO m) => CartId -> m (Maybe CartStatus)
+cartStatusToText :: CartStatus -> Text
+cartStatusToText v = case v of
+  CartStatusOpen -> "open"
+  CartStatusLocked -> "locked"
+  CartStatusPurchased -> "purchased"
+
+cartStatusSqlType :: Text
+cartStatusSqlType = "cart_status"
+
+instance FromField CartStatus where
+  fromField f Nothing =
+    returnError UnexpectedNull f err
+    where
+      err = "Expected SQL type " <> cs cartStatusSqlType <> ", but got null"
+  fromField f (Just bs) =
+    case cartStatusFromText $ decodeUtf8 bs of
+      Just v -> pure v
+      Nothing -> returnError ConversionFailed f err
+    where
+      err = "Expected SQL type " <> cs cartStatusSqlType <> ", but got invalid value " <> cs bs
+
+instance ToField CartStatus where
+  toField v = toField $ cartStatusToText v
+
+getCartStatus ::
+  (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
+  CartId ->
+  m (Maybe CartStatus)
 getCartStatus cartId = do
   result <- withConn $ \conn -> query conn qry args
   case result of
     [Only cartStatus] -> pure $ Just cartStatus
     _ -> pure Nothing
   where
-    qry = [sql|select status from carts where id = ? limit 1|]
+    qry =
+      [sql|
+        select status
+        from carts
+        where id = ? limit 1
+      |]
     args = Only cartId
+
+lockCart ::
+  (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
+  CartId ->
+  m ()
+lockCart cartId =
+  void . withConn $ \conn -> execute conn qry args
+  where
+    qry =
+      [sql|
+        update carts
+        set status = ?
+        where id = ?
+      |]
+    args = (CartStatusLocked, cartId)
+
+unlockCart ::
+  (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
+  CartId ->
+  m ()
+unlockCart cartId =
+  void . withConn $ \conn -> execute conn qry args
+  where
+    qry =
+      [sql|
+        update carts
+        set status = ?
+        where id = ? and status = ?
+      |]
+    args = (CartStatusOpen, cartId, CartStatusLocked)
 
 processBooking ::
   forall env m.

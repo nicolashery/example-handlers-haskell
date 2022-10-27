@@ -13,8 +13,10 @@ import App.Cart
     HasCartConfig (getBookingUrl, getPaymentUrl),
     PaymentId (unPaymentId),
     getCartStatus,
+    lockCart,
     processBooking,
     processPayment,
+    unlockCart,
   )
 import App.Config
   ( Config
@@ -138,6 +140,8 @@ postCartPurchaseHandler = do
       raiseStatus status409 "Cart locked"
     Just CartStatusOpen -> do
       logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
+      lift $ lockCart cartId
+      lift $ unlockCart cartId
       paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
       let action :: AppM (Either Text (BookingId, PaymentId))
           action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
