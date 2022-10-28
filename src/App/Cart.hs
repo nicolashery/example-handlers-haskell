@@ -8,8 +8,8 @@ module App.Cart
     HasCartConfig (getBookingUrl, getPaymentUrl),
     CartStatus (CartStatusOpen, CartStatusLocked, CartStatusPurchased),
     getCartStatus,
-    lockCart,
-    unlockCart,
+    markCartAsPurchased,
+    withCart,
     processBooking,
     processPayment,
   )
@@ -19,7 +19,7 @@ import App.Db (HasDbPool, withConn)
 import App.Req (isStatusCodeException')
 import Blammo.Logging (Message ((:#)), MonadLogger, logInfo, logWarn, (.=))
 import Control.Concurrent (threadDelay)
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, asks)
 import Data.Aeson
@@ -59,7 +59,7 @@ import Network.HTTP.Req
   )
 import Text.URI (mkURI)
 import UnliftIO (Exception, MonadUnliftIO, Typeable)
-import UnliftIO.Exception (catch, throwIO)
+import UnliftIO.Exception (bracketOnError, catch, throwIO)
 
 newtype CartException = CartException Text
   deriving (Show, Typeable)
@@ -203,17 +203,21 @@ getCartStatus cartId = do
 lockCart ::
   (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
   CartId ->
-  m ()
-lockCart cartId =
-  void . withConn $ \conn -> execute conn qry args
+  m CartId
+lockCart cartId = do
+  n <- withConn $ \conn -> execute conn qry args
+  when (n == 0) $
+    throwIO $
+      CartException ("Cannot lock cart whose status is not " <> cartStatusToText CartStatusOpen)
+  pure cartId
   where
     qry =
       [sql|
         update carts
         set status = ?
-        where id = ?
+        where id = ? and status = ?
       |]
-    args = (CartStatusLocked, cartId)
+    args = (CartStatusLocked, cartId, CartStatusOpen)
 
 unlockCart ::
   (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
@@ -229,6 +233,23 @@ unlockCart cartId =
         where id = ? and status = ?
       |]
     args = (CartStatusOpen, cartId, CartStatusLocked)
+
+markCartAsPurchased ::
+  (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
+  CartId ->
+  m ()
+markCartAsPurchased cartId =
+  -- No-op: we don't actually change the cart status so we don't
+  -- have to reset the db everytime we test
+  void $ getCartStatus cartId
+
+withCart ::
+  (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
+  CartId ->
+  (CartId -> m a) ->
+  m a
+withCart cartId action =
+  bracketOnError (lockCart cartId) unlockCart action
 
 processBooking ::
   forall env m.

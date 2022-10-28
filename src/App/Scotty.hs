@@ -13,10 +13,10 @@ import App.Cart
     HasCartConfig (getBookingUrl, getPaymentUrl),
     PaymentId (unPaymentId),
     getCartStatus,
-    lockCart,
+    markCartAsPurchased,
     processBooking,
     processPayment,
-    unlockCart,
+    withCart,
   )
 import App.Config
   ( Config
@@ -28,7 +28,7 @@ import App.Config
     configInit,
   )
 import App.Db (HasDbPool (getDbPool), dbInit)
-import App.Text (tlshow)
+import App.Text (tshow)
 import Blammo.Logging
   ( HasLogger (loggerL),
     Logger,
@@ -139,19 +139,26 @@ postCartPurchaseHandler = do
       logWarn $ "Cart locked" :# ["cart_id" .= cartId]
       raiseStatus status409 "Cart locked"
     Just CartStatusOpen -> do
+      purchaseResult <- lift $ withCart cartId purchase
+      case purchaseResult of
+        Left msg -> do
+          raiseStatus status500 (cs $ "Cart purchase failed: " <> msg)
+        Right response -> do
+          text (cs response)
+  where
+    purchase :: CartId -> AppM (Either Text Text)
+    purchase cartId = do
       logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-      lift $ lockCart cartId
-      lift $ unlockCart cartId
       paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
       let action :: AppM (Either Text (BookingId, PaymentId))
           action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
           handler :: CartException -> AppM (Either Text (BookingId, PaymentId))
           handler (CartException msg) = pure $ Left msg
-      result <- lift $ catch action handler
+      result <- catch action handler
       case result of
         Left msg -> do
           logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
-          raiseStatus status500 (cs $ "Cart purchase failed: " <> msg)
+          pure $ Left msg
         Right (bookingId, paymentId) -> do
           liftIO $ threadDelay (100 * 1000)
           let response =
@@ -160,7 +167,7 @@ postCartPurchaseHandler = do
                     cs $ unCartId cartId,
                     "\n",
                     "paymentMaxRetries: ",
-                    tlshow paymentMaxRetries,
+                    tshow paymentMaxRetries,
                     "\n",
                     "bookingId: ",
                     cs $ unBookingId bookingId,
@@ -169,8 +176,9 @@ postCartPurchaseHandler = do
                     cs $ unPaymentId paymentId,
                     "\n"
                   ]
+          markCartAsPurchased cartId
           logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
-          text response
+          pure $ Right response
 
 application :: ScottyT TL.Text AppM ()
 application = do
