@@ -24,7 +24,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, asks)
 import Data.Aeson
   ( FromJSON (parseJSON),
-    Options (fieldLabelModifier),
+    Options (constructorTagModifier, fieldLabelModifier),
     ToJSON (toJSON),
     camelTo2,
     defaultOptions,
@@ -86,7 +86,11 @@ data BookingRequest = BookingRequest
   deriving (Generic)
 
 instance ToJSON BookingRequest where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 14}
+  toJSON =
+    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "bookingRequest"
 
 data BookingResponse = BookingResponse
   { bookingResponseBookingId :: BookingId,
@@ -95,7 +99,11 @@ data BookingResponse = BookingResponse
   deriving (Generic)
 
 instance FromJSON BookingResponse where
-  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
+  parseJSON =
+    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "bookingResponse"
 
 data PaymentRequest = PaymentRequest
   { paymentRequestCardholderName :: Text,
@@ -104,7 +112,11 @@ data PaymentRequest = PaymentRequest
   deriving (Generic)
 
 instance ToJSON PaymentRequest where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 14}
+  toJSON =
+    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "paymentRequest"
 
 data PaymentResponse = PaymentResponse
   { paymentResponsePaymentId :: PaymentId,
@@ -113,13 +125,17 @@ data PaymentResponse = PaymentResponse
   deriving (Generic)
 
 instance FromJSON PaymentResponse where
-  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
+  parseJSON =
+    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "paymentResponse"
 
 data CartStatus
   = CartStatusOpen
   | CartStatusLocked
   | CartStatusPurchased
-  deriving (Eq)
+  deriving (Eq, Generic)
 
 cartStatusFromText :: Text -> Maybe CartStatus
 cartStatusFromText v = case v of
@@ -133,6 +149,20 @@ cartStatusToText v = case v of
   CartStatusOpen -> "open"
   CartStatusLocked -> "locked"
   CartStatusPurchased -> "purchased"
+
+instance FromJSON CartStatus where
+  parseJSON =
+    genericParseJSON defaultOptions {constructorTagModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "CartStatus"
+
+instance ToJSON CartStatus where
+  toJSON =
+    genericToJSON defaultOptions {constructorTagModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "CartStatus"
 
 cartStatusSqlType :: Text
 cartStatusSqlType = "cart_status"

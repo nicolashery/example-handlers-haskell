@@ -47,7 +47,11 @@ data BookingRequest = BookingRequest
   deriving (Generic)
 
 instance FromJSON BookingRequest where
-  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 14}
+  parseJSON =
+    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "bookingRequest"
 
 data BookingResponse = BookingResponse
   { bookingResponseBookingId :: BookingId,
@@ -56,7 +60,11 @@ data BookingResponse = BookingResponse
   deriving (Generic)
 
 instance ToJSON BookingResponse where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
+  toJSON =
+    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "bookingResponse"
 
 data PaymentRequest = PaymentRequest
   { paymentRequestCardholderName :: Text,
@@ -65,7 +73,11 @@ data PaymentRequest = PaymentRequest
   deriving (Generic)
 
 instance FromJSON PaymentRequest where
-  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 14}
+  parseJSON =
+    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "paymentRequest"
 
 data PaymentResponse = PaymentResponse
   { paymentResponsePaymentId :: PaymentId,
@@ -74,7 +86,11 @@ data PaymentResponse = PaymentResponse
   deriving (Generic)
 
 instance ToJSON PaymentResponse where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop 15}
+  toJSON =
+    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
+    where
+      prefix :: String
+      prefix = "paymentResponse"
 
 type Api =
   "booking" :> ReqBody '[JSON] BookingRequest :> Post '[JSON] BookingResponse
