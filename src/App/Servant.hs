@@ -10,8 +10,10 @@ import App.Cart
     HasCartConfig (getBookingUrl, getPaymentUrl),
     PaymentId (unPaymentId),
     getCartStatus,
+    markCartAsPurchased,
     processBooking,
     processPayment,
+    withCart,
   )
 import App.Config
   ( Config
@@ -138,36 +140,38 @@ postCartPurchaseHandler cartId = do
       logWarn $ "Cart locked" :# ["cart_id" .= cartId]
       throwIO $ err409 {errBody = "Cart locked"}
     Just CartStatusOpen -> do
-      logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-      paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
-      let action :: AppM (Either Text (BookingId, PaymentId))
-          action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
-          handler :: CartException -> AppM (Either Text (BookingId, PaymentId))
-          handler (CartException msg) = pure $ Left msg
-      result <- catch action handler
-      case result of
-        Left msg -> do
-          logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
-          throwIO $ err500 {errBody = cs $ "Cart purchase failed: " <> msg}
-        Right (bookingId, paymentId) -> do
-          liftIO $ threadDelay (100 * 1000)
-          let response =
-                mconcat
-                  [ "cartId: ",
-                    unCartId cartId,
-                    "\n",
-                    "paymentMaxRetries: ",
-                    tshow paymentMaxRetries,
-                    "\n",
-                    "bookingId: ",
-                    unBookingId bookingId,
-                    "\n",
-                    "paymentId: ",
-                    unPaymentId paymentId,
-                    "\n"
-                  ]
-          logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
-          pure response
+      withCart cartId $ do
+        logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
+        paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
+        let action :: AppM (Either Text (BookingId, PaymentId))
+            action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
+            handleError :: CartException -> AppM (Either Text (BookingId, PaymentId))
+            handleError (CartException msg) = pure $ Left msg
+        result <- catch action handleError
+        case result of
+          Left msg -> do
+            logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
+            throwIO $ err500 {errBody = cs $ "Cart purchase failed: " <> msg}
+          Right (bookingId, paymentId) -> do
+            liftIO $ threadDelay (100 * 1000)
+            let response =
+                  mconcat
+                    [ "cartId: ",
+                      unCartId cartId,
+                      "\n",
+                      "paymentMaxRetries: ",
+                      tshow paymentMaxRetries,
+                      "\n",
+                      "bookingId: ",
+                      unBookingId bookingId,
+                      "\n",
+                      "paymentId: ",
+                      unPaymentId paymentId,
+                      "\n"
+                    ]
+            markCartAsPurchased cartId
+            logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
+            pure response
 
 server :: ServerT Api AppM
 server = postCartPurchaseHandler

@@ -139,42 +139,44 @@ postCartPurchaseHandler = do
       logWarn $ "Cart locked" :# ["cart_id" .= cartId]
       raiseStatus status409 "Cart locked"
     Just CartStatusOpen -> do
-      let action :: AppM (Either Text Text)
+      logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
+      let purchase :: AppM Text
+          purchase = do
+            paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
+            (bookingId, paymentId) <- concurrently (processBooking cartId) (processPayment cartId)
+            liftIO $ threadDelay (100 * 1000)
+            let response =
+                  mconcat
+                    [ "cartId: ",
+                      unCartId cartId,
+                      "\n",
+                      "paymentMaxRetries: ",
+                      tshow paymentMaxRetries,
+                      "\n",
+                      "bookingId: ",
+                      unBookingId bookingId,
+                      "\n",
+                      "paymentId: ",
+                      unPaymentId paymentId,
+                      "\n"
+                    ]
+            markCartAsPurchased cartId
+            pure response
+
+          action :: AppM (Either Text Text)
           action = Right <$> withCart cartId purchase
+
           handleError :: CartException -> AppM (Either Text Text)
           handleError (CartException msg) = pure $ Left msg
+
       result <- lift $ catch action handleError
       case result of
         Left msg -> do
           logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
           raiseStatus status500 (cs $ "Cart purchase failed: " <> msg)
         Right response -> do
+          logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
           text (cs response)
-  where
-    purchase :: CartId -> AppM Text
-    purchase cartId = do
-      logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-      paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
-      (bookingId, paymentId) <- concurrently (processBooking cartId) (processPayment cartId)
-      liftIO $ threadDelay (100 * 1000)
-      let response =
-            mconcat
-              [ "cartId: ",
-                cs $ unCartId cartId,
-                "\n",
-                "paymentMaxRetries: ",
-                tshow paymentMaxRetries,
-                "\n",
-                "bookingId: ",
-                cs $ unBookingId bookingId,
-                "\n",
-                "paymentId: ",
-                cs $ unPaymentId paymentId,
-                "\n"
-              ]
-      markCartAsPurchased cartId
-      logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
-      pure response
 
 application :: ScottyT TL.Text AppM ()
 application = do

@@ -59,7 +59,7 @@ import Network.HTTP.Req
   )
 import Text.URI (mkURI)
 import UnliftIO (Exception, MonadUnliftIO, Typeable)
-import UnliftIO.Exception (bracketOnError, catch, throwIO)
+import UnliftIO.Exception (bracketOnError_, catch, throwIO)
 
 newtype CartException = CartException Text
   deriving (Show, Typeable)
@@ -203,13 +203,12 @@ getCartStatus cartId = do
 lockCart ::
   (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
   CartId ->
-  m CartId
+  m ()
 lockCart cartId = do
   n <- withConn $ \conn -> execute conn qry args
   when (n == 0) $
     throwIO $
       CartException ("Cannot lock cart whose status is not " <> cartStatusToText CartStatusOpen)
-  pure cartId
   where
     qry =
       [sql|
@@ -246,10 +245,10 @@ markCartAsPurchased cartId =
 withCart ::
   (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
   CartId ->
-  (CartId -> m a) ->
+  m a ->
   m a
 withCart cartId action =
-  bracketOnError (lockCart cartId) unlockCart action
+  bracketOnError_ (lockCart cartId) (unlockCart cartId) action
 
 processBooking ::
   forall env m.
