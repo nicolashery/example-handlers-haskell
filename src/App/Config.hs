@@ -1,8 +1,9 @@
 module App.Config
   ( Config
       ( Config,
-        configPaymentMaxRetries,
-        configPaymentRetryDelay,
+        configBookingDelay,
+        configPaymentDelay,
+        configPurchaseDelay,
         configBookingUrl,
         configPaymentUrl,
         configDatabaseUrl
@@ -18,8 +19,9 @@ import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
 
 data Config = Config
-  { configPaymentMaxRetries :: Int,
-    configPaymentRetryDelay :: Int,
+  { configBookingDelay :: Int,
+    configPaymentDelay :: Int,
+    configPurchaseDelay :: Int,
     configBookingUrl :: Text,
     configPaymentUrl :: Text,
     configDatabaseUrl :: Text
@@ -37,15 +39,17 @@ readEnvDefault def env = do
 
 configInit :: IO Config
 configInit = do
-  paymentMaxRetries <- readEnvDefault 3 "PAYMENT_MAX_RETRIES"
-  paymentRetryDelay <- readEnvDefault 2000 "PAYMENT_RETRY_DELAY"
+  bookingDelay <- readEnvDefault (200 * 1000) "BOOKING_DELAY"
+  paymentDelay <- readEnvDefault (100 * 1000) "PAYMENT_DELAY"
+  purchaseDelay <- readEnvDefault (1 * 1000) "PURCHASE_DELAY"
   bookingUrl <- readEnvDefault "http://localhost:3001/booking" "BOOKING_URL"
   paymentUrl <- readEnvDefault "http://localhost:3001/payment" "PAYMENT_URL"
   databaseUrl <- readEnvDefault "postgresql://example_haskell:example_haskell@localhost/example_haskell" "DATABASE_URL"
   let config =
         Config
-          { configPaymentMaxRetries = paymentMaxRetries,
-            configPaymentRetryDelay = paymentRetryDelay,
+          { configBookingDelay = bookingDelay,
+            configPaymentDelay = paymentDelay,
+            configPurchaseDelay = purchaseDelay,
             configBookingUrl = bookingUrl,
             configPaymentUrl = paymentUrl,
             configDatabaseUrl = databaseUrl

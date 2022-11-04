@@ -5,7 +5,12 @@ module App.Cart
     CartId (CartId, unCartId),
     BookingId (BookingId, unBookingId),
     PaymentId (PaymentId, unPaymentId),
-    HasCartConfig (getBookingUrl, getPaymentUrl),
+    HasCartConfig
+      ( getBookingUrl,
+        getBookingDelay,
+        getPaymentUrl,
+        getPaymentDelay
+      ),
     CartStatus (CartStatusOpen, CartStatusLocked, CartStatusPurchased),
     getCartStatus,
     markCartAsPurchased,
@@ -64,7 +69,9 @@ newtype CartId = CartId {unCartId :: Text}
 
 class HasCartConfig env where
   getBookingUrl :: env -> Text
+  getBookingDelay :: env -> Int
   getPaymentUrl :: env -> Text
+  getPaymentDelay :: env -> Int
 
 newtype BookingId = BookingId {unBookingId :: Text}
   deriving (FromJSON, ToJSON)
@@ -227,7 +234,8 @@ processBooking ::
 processBooking cartId = do
   bookingUrl <- asks getBookingUrl
   logInfo $ "Booking starting" :# ["cart_id" .= cartId, "booking_url" .= bookingUrl]
-  liftIO $ threadDelay (2 * 1000 * 1000)
+  bookingDelay <- asks getBookingDelay
+  liftIO $ threadDelay bookingDelay
   uri <- liftIO $ mkURI bookingUrl
   let (url, options) = fromJust (useHttpURI uri)
       venue = if cartId == CartId "ghi789" then "TDE8751" else "HRT3974"
@@ -267,7 +275,8 @@ processPayment ::
 processPayment cartId = do
   paymentUrl <- asks getPaymentUrl
   logInfo $ "Payment starting" :# ["cart_id" .= cartId, "payment_url" .= paymentUrl]
-  liftIO $ threadDelay (1 * 1000 * 1000)
+  paymentDelay <- asks getPaymentDelay
+  liftIO $ threadDelay paymentDelay
   uri <- liftIO $ mkURI paymentUrl
   let (url, options) = fromJust (useHttpURI uri)
       cardNumber = if cartId == CartId "ghi789" then "a192901463306478" else "5192901463306478"

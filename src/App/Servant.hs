@@ -7,7 +7,12 @@ import App.Cart
     CartException (CartException),
     CartId (CartId, unCartId),
     CartStatus (CartStatusLocked, CartStatusOpen, CartStatusPurchased),
-    HasCartConfig (getBookingUrl, getPaymentUrl),
+    HasCartConfig
+      ( getBookingDelay,
+        getBookingUrl,
+        getPaymentDelay,
+        getPaymentUrl
+      ),
     PaymentId (unPaymentId),
     getCartStatus,
     markCartAsPurchased,
@@ -17,10 +22,12 @@ import App.Cart
   )
 import App.Config
   ( Config
-      ( configBookingUrl,
+      ( configBookingDelay,
+        configBookingUrl,
         configDatabaseUrl,
-        configPaymentMaxRetries,
-        configPaymentUrl
+        configPaymentDelay,
+        configPaymentUrl,
+        configPurchaseDelay
       ),
     configInit,
   )
@@ -86,7 +93,9 @@ instance HasLogger App where
 
 instance HasCartConfig App where
   getBookingUrl = configBookingUrl . appConfig
+  getBookingDelay = configBookingDelay . appConfig
   getPaymentUrl = configPaymentUrl . appConfig
+  getPaymentDelay = configPaymentDelay . appConfig
 
 instance HasDbPool App where
   getDbPool = appDbPool
@@ -142,7 +151,6 @@ postCartPurchaseHandler cartId = do
     Just CartStatusOpen -> do
       withCart cartId $ do
         logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-        paymentMaxRetries <- asks (configPaymentMaxRetries . appConfig)
         let action :: AppM (Either Text (BookingId, PaymentId))
             action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
             handleError :: CartException -> AppM (Either Text (BookingId, PaymentId))
@@ -153,14 +161,15 @@ postCartPurchaseHandler cartId = do
             logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
             throwIO $ err500 {errBody = cs $ "Cart purchase failed: " <> msg}
           Right (bookingId, paymentId) -> do
-            liftIO $ threadDelay (100 * 1000)
+            purchaseDelay <- asks (configPurchaseDelay . appConfig)
+            liftIO $ threadDelay purchaseDelay
             let response =
                   mconcat
                     [ "cartId: ",
                       unCartId cartId,
                       "\n",
-                      "paymentMaxRetries: ",
-                      tshow paymentMaxRetries,
+                      "purchaseDelay: ",
+                      tshow purchaseDelay,
                       "\n",
                       "bookingId: ",
                       unBookingId bookingId,

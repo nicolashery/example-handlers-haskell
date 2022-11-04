@@ -16,7 +16,12 @@ import App.Cart
     CartException (CartException),
     CartId (CartId, unCartId),
     CartStatus (CartStatusLocked, CartStatusOpen, CartStatusPurchased),
-    HasCartConfig (getBookingUrl, getPaymentUrl),
+    HasCartConfig
+      ( getBookingDelay,
+        getBookingUrl,
+        getPaymentDelay,
+        getPaymentUrl
+      ),
     PaymentId (unPaymentId),
     getCartStatus,
     markCartAsPurchased,
@@ -26,10 +31,12 @@ import App.Cart
   )
 import App.Config
   ( Config
-      ( configBookingUrl,
+      ( configBookingDelay,
+        configBookingUrl,
         configDatabaseUrl,
-        configPaymentMaxRetries,
-        configPaymentUrl
+        configPaymentDelay,
+        configPaymentUrl,
+        configPurchaseDelay
       ),
     configInit,
   )
@@ -87,11 +94,15 @@ instance HasLogger App where
 
 instance HasCartConfig App where
   getBookingUrl = configBookingUrl . appConfig
+  getBookingDelay = configBookingDelay . appConfig
   getPaymentUrl = configPaymentUrl . appConfig
+  getPaymentDelay = configPaymentDelay . appConfig
 
 instance HasCartConfig (HandlerData App App) where
   getBookingUrl = getBookingUrl . rheSite . handlerEnv
+  getBookingDelay = getBookingDelay . rheSite . handlerEnv
   getPaymentUrl = getPaymentUrl . rheSite . handlerEnv
+  getPaymentDelay = getPaymentDelay . rheSite . handlerEnv
 
 instance HasDbPool App where
   getDbPool = appDbPool
@@ -148,7 +159,6 @@ postCartPurchaseR cartId = do
     Just CartStatusOpen -> do
       withCart cartId $ do
         logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-        paymentMaxRetries <- getsYesod (configPaymentMaxRetries . appConfig)
         let action :: Handler (Either Text (BookingId, PaymentId))
             action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
             handleError :: CartException -> Handler (Either Text (BookingId, PaymentId))
@@ -159,14 +169,15 @@ postCartPurchaseR cartId = do
             logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
             sendStatusText status500 ("Cart purchase failed: " <> msg)
           Right (bookingId, paymentId) -> do
+            purchaseDelay <- getsYesod (configPurchaseDelay . appConfig)
             liftIO $ threadDelay (100 * 1000)
             let response =
                   mconcat
                     [ "cartId: ",
                       unCartId cartId,
                       "\n",
-                      "paymentMaxRetries: ",
-                      tshow paymentMaxRetries,
+                      "purchaseDelay: ",
+                      tshow purchaseDelay,
                       "\n",
                       "bookingId: ",
                       unBookingId bookingId,
