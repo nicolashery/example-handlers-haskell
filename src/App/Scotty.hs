@@ -6,9 +6,9 @@ module App.Scotty
 where
 
 import App.Cart
-  ( BookingId (unBookingId),
+  ( BookingId,
     CartException (CartException),
-    CartId (CartId, unCartId),
+    CartId (CartId),
     CartStatus (CartStatusLocked, CartStatusOpen, CartStatusPurchased),
     HasCartConfig
       ( getBookingDelay,
@@ -16,7 +16,7 @@ import App.Cart
         getPaymentDelay,
         getPaymentUrl
       ),
-    PaymentId (unPaymentId),
+    PaymentId,
     getCartStatus,
     markCartAsPurchased,
     processBooking,
@@ -35,7 +35,7 @@ import App.Config
     configInit,
   )
 import App.Db (HasDbPool (getDbPool), dbInit)
-import App.Text (tshow)
+import App.Json (defaultToJSON)
 import Blammo.Logging
   ( HasLogger (loggerL),
     Logger,
@@ -52,11 +52,13 @@ import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
+import Data.Aeson (ToJSON (toJSON))
 import Data.Pool (Pool)
 import Data.String.Conversions (cs)
 import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
 import Database.PostgreSQL.Simple (Connection)
+import GHC.Generics (Generic)
 import Lens.Micro (lens)
 import Network.HTTP.Req
   ( HttpConfig,
@@ -71,11 +73,11 @@ import Web.Scotty.Trans
   ( ActionT,
     ScottyError,
     ScottyT,
+    json,
     param,
     post,
     raiseStatus,
     scottyT,
-    text,
   )
 
 data App = App
@@ -133,6 +135,17 @@ runApp m = do
   app <- appInit
   runLoggerLoggingT app $ runReaderT (unAppM m) app
 
+data CartPurchaseResponse = CartPurchaseResponse
+  { cartPurchaseResponseCartId :: CartId,
+    cartPurchaseResponsePurchaseDelay :: Int,
+    cartPurchaseResponseBookingId :: BookingId,
+    cartPurchaseResponsePaymentId :: PaymentId
+  }
+  deriving (Generic)
+
+instance ToJSON CartPurchaseResponse where
+  toJSON = defaultToJSON "cartPurchaseResponse"
+
 postCartPurchaseHandler :: ActionT TL.Text AppM ()
 postCartPurchaseHandler = do
   cartId <- CartId <$> param "cartId"
@@ -149,33 +162,24 @@ postCartPurchaseHandler = do
       raiseStatus status409 "Cart locked"
     Just CartStatusOpen -> do
       logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-      let purchase :: AppM Text
+      let purchase :: AppM CartPurchaseResponse
           purchase = do
             (bookingId, paymentId) <- concurrently (processBooking cartId) (processPayment cartId)
             purchaseDelay <- asks (configPurchaseDelay . appConfig)
             liftIO $ threadDelay purchaseDelay
-            let response =
-                  mconcat
-                    [ "cartId: ",
-                      unCartId cartId,
-                      "\n",
-                      "purchaseDelay: ",
-                      tshow purchaseDelay,
-                      "\n",
-                      "bookingId: ",
-                      unBookingId bookingId,
-                      "\n",
-                      "paymentId: ",
-                      unPaymentId paymentId,
-                      "\n"
-                    ]
             markCartAsPurchased cartId
-            pure response
+            pure $
+              CartPurchaseResponse
+                { cartPurchaseResponseCartId = cartId,
+                  cartPurchaseResponsePurchaseDelay = purchaseDelay,
+                  cartPurchaseResponseBookingId = bookingId,
+                  cartPurchaseResponsePaymentId = paymentId
+                }
 
-          action :: AppM (Either Text Text)
+          action :: AppM (Either Text CartPurchaseResponse)
           action = Right <$> withCart cartId purchase
 
-          handleError :: CartException -> AppM (Either Text Text)
+          handleError :: CartException -> AppM (Either Text CartPurchaseResponse)
           handleError (CartException msg) = pure $ Left msg
 
       result <- lift $ catch action handleError
@@ -185,7 +189,7 @@ postCartPurchaseHandler = do
           raiseStatus status500 (cs $ "Cart purchase failed: " <> msg)
         Right response -> do
           logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
-          text (cs response)
+          json response
 
 application :: ScottyT TL.Text AppM ()
 application = do

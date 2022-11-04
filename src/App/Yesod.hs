@@ -12,9 +12,9 @@ module App.Yesod
 where
 
 import App.Cart
-  ( BookingId (unBookingId),
+  ( BookingId,
     CartException (CartException),
-    CartId (CartId, unCartId),
+    CartId (CartId),
     CartStatus (CartStatusLocked, CartStatusOpen, CartStatusPurchased),
     HasCartConfig
       ( getBookingDelay,
@@ -22,7 +22,7 @@ import App.Cart
         getPaymentDelay,
         getPaymentUrl
       ),
-    PaymentId (unPaymentId),
+    PaymentId,
     getCartStatus,
     markCartAsPurchased,
     processBooking,
@@ -41,7 +41,7 @@ import App.Config
     configInit,
   )
 import App.Db (HasDbPool (getDbPool), dbInit)
-import App.Text (tshow)
+import App.Json (defaultToJSON)
 import Blammo.Logging
   ( HasLogger (loggerL),
     Logger,
@@ -55,9 +55,11 @@ import Blammo.Logging
 import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Aeson (ToJSON (toJSON))
 import Data.Pool (Pool)
 import Data.Text (Text)
 import Database.PostgreSQL.Simple (Connection)
+import GHC.Generics (Generic)
 import Lens.Micro (lens)
 import Network.HTTP.Req
   ( HttpConfig,
@@ -80,7 +82,7 @@ import Yesod.Core
     sendResponseStatus,
     toWaiAppPlain,
   )
-import Yesod.Core.Types (HandlerData (handlerEnv), RunHandlerEnv (rheSite))
+import Yesod.Core.Types (HandlerData (handlerEnv), JSONResponse (JSONResponse), RunHandlerEnv (rheSite))
 
 data App = App
   { appConfig :: Config,
@@ -143,7 +145,18 @@ instance Yesod App where
 sendStatusText :: (MonadHandler m) => Status -> Text -> m a
 sendStatusText = sendResponseStatus
 
-postCartPurchaseR :: CartId -> Handler Text
+data CartPurchaseResponse = CartPurchaseResponse
+  { cartPurchaseResponseCartId :: CartId,
+    cartPurchaseResponsePurchaseDelay :: Int,
+    cartPurchaseResponseBookingId :: BookingId,
+    cartPurchaseResponsePaymentId :: PaymentId
+  }
+  deriving (Generic)
+
+instance ToJSON CartPurchaseResponse where
+  toJSON = defaultToJSON "cartPurchaseResponse"
+
+postCartPurchaseR :: CartId -> Handler (JSONResponse CartPurchaseResponse)
 postCartPurchaseR cartId = do
   cartStatusMaybe <- getCartStatus cartId
   case cartStatusMaybe of
@@ -171,24 +184,16 @@ postCartPurchaseR cartId = do
           Right (bookingId, paymentId) -> do
             purchaseDelay <- getsYesod (configPurchaseDelay . appConfig)
             liftIO $ threadDelay (100 * 1000)
-            let response =
-                  mconcat
-                    [ "cartId: ",
-                      unCartId cartId,
-                      "\n",
-                      "purchaseDelay: ",
-                      tshow purchaseDelay,
-                      "\n",
-                      "bookingId: ",
-                      unBookingId bookingId,
-                      "\n",
-                      "paymentId: ",
-                      unPaymentId paymentId,
-                      "\n"
-                    ]
             markCartAsPurchased cartId
             logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
-            pure response
+            pure $
+              JSONResponse $
+                CartPurchaseResponse
+                  { cartPurchaseResponseCartId = cartId,
+                    cartPurchaseResponsePurchaseDelay = purchaseDelay,
+                    cartPurchaseResponseBookingId = bookingId,
+                    cartPurchaseResponsePaymentId = paymentId
+                  }
 
 main :: IO ()
 main = do
