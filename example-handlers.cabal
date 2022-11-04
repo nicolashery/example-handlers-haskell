@@ -79,6 +79,7 @@ library
         App.Config
         App.Db
         App.External
+        App.Json
         App.Req
         App.Scotty
         App.Servant

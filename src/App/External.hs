@@ -6,17 +6,10 @@ module App.External
   )
 where
 
+import App.Json (defaultParseJSON, defaultToJSON)
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (throwError))
-import Data.Aeson
-  ( FromJSON (parseJSON),
-    Options (fieldLabelModifier),
-    ToJSON (toJSON),
-    camelTo2,
-    defaultOptions,
-    genericParseJSON,
-    genericToJSON,
-  )
+import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON))
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Network.Wai.Handler.Warp (run)
@@ -47,11 +40,7 @@ data BookingRequest = BookingRequest
   deriving (Generic)
 
 instance FromJSON BookingRequest where
-  parseJSON =
-    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "bookingRequest"
+  parseJSON = defaultParseJSON "bookingRequest"
 
 data BookingResponse = BookingResponse
   { bookingResponseBookingId :: BookingId,
@@ -60,11 +49,7 @@ data BookingResponse = BookingResponse
   deriving (Generic)
 
 instance ToJSON BookingResponse where
-  toJSON =
-    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "bookingResponse"
+  toJSON = defaultToJSON "bookingResponse"
 
 data PaymentRequest = PaymentRequest
   { paymentRequestCardholderName :: Text,
@@ -73,11 +58,7 @@ data PaymentRequest = PaymentRequest
   deriving (Generic)
 
 instance FromJSON PaymentRequest where
-  parseJSON =
-    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "paymentRequest"
+  parseJSON = defaultParseJSON "paymentRequest"
 
 data PaymentResponse = PaymentResponse
   { paymentResponsePaymentId :: PaymentId,
@@ -86,11 +67,7 @@ data PaymentResponse = PaymentResponse
   deriving (Generic)
 
 instance ToJSON PaymentResponse where
-  toJSON =
-    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "paymentResponse"
+  toJSON = defaultToJSON "paymentResponse"
 
 type Api =
   "booking" :> ReqBody '[JSON] BookingRequest :> Post '[JSON] BookingResponse

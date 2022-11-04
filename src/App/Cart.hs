@@ -16,21 +16,14 @@ module App.Cart
 where
 
 import App.Db (HasDbPool, withConn)
+import App.Json (defaultParseJSON, defaultToJSON)
 import App.Req (isStatusCodeException')
 import Blammo.Logging (Message ((:#)), MonadLogger, logInfo, logWarn, (.=))
 import Control.Concurrent (threadDelay)
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, asks)
-import Data.Aeson
-  ( FromJSON (parseJSON),
-    Options (constructorTagModifier, fieldLabelModifier),
-    ToJSON (toJSON),
-    camelTo2,
-    defaultOptions,
-    genericParseJSON,
-    genericToJSON,
-  )
+import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON))
 import Data.Maybe (fromJust)
 import Data.String.Conversions (cs)
 import Data.Text (Text)
@@ -86,11 +79,7 @@ data BookingRequest = BookingRequest
   deriving (Generic)
 
 instance ToJSON BookingRequest where
-  toJSON =
-    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "bookingRequest"
+  toJSON = defaultToJSON "bookingRequest"
 
 data BookingResponse = BookingResponse
   { bookingResponseBookingId :: BookingId,
@@ -99,11 +88,7 @@ data BookingResponse = BookingResponse
   deriving (Generic)
 
 instance FromJSON BookingResponse where
-  parseJSON =
-    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "bookingResponse"
+  parseJSON = defaultParseJSON "bookingResponse"
 
 data PaymentRequest = PaymentRequest
   { paymentRequestCardholderName :: Text,
@@ -112,11 +97,7 @@ data PaymentRequest = PaymentRequest
   deriving (Generic)
 
 instance ToJSON PaymentRequest where
-  toJSON =
-    genericToJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "paymentRequest"
+  toJSON = defaultToJSON "paymentRequest"
 
 data PaymentResponse = PaymentResponse
   { paymentResponsePaymentId :: PaymentId,
@@ -125,11 +106,7 @@ data PaymentResponse = PaymentResponse
   deriving (Generic)
 
 instance FromJSON PaymentResponse where
-  parseJSON =
-    genericParseJSON defaultOptions {fieldLabelModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "paymentResponse"
+  parseJSON = defaultParseJSON "paymentResponse"
 
 data CartStatus
   = CartStatusOpen
@@ -151,18 +128,10 @@ cartStatusToText v = case v of
   CartStatusPurchased -> "purchased"
 
 instance FromJSON CartStatus where
-  parseJSON =
-    genericParseJSON defaultOptions {constructorTagModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "CartStatus"
+  parseJSON = defaultParseJSON "CartStatus"
 
 instance ToJSON CartStatus where
-  toJSON =
-    genericToJSON defaultOptions {constructorTagModifier = camelTo2 '_' . drop (length prefix)}
-    where
-      prefix :: String
-      prefix = "CartStatus"
+  toJSON = defaultToJSON "CartStatus"
 
 cartStatusSqlType :: Text
 cartStatusSqlType = "cart_status"
@@ -238,9 +207,9 @@ markCartAsPurchased ::
   CartId ->
   m ()
 markCartAsPurchased cartId =
-  -- No-op: we don't actually change the cart status so we don't
-  -- have to reset the db everytime we test
-  void $ getCartStatus cartId
+  -- No-op: we don't actually change the cart status to purchased
+  -- so we don't have to reset the db everytime we test, we just unlock it
+  unlockCart cartId
 
 withCart ::
   (MonadReader env m, HasDbPool env, MonadUnliftIO m) =>
