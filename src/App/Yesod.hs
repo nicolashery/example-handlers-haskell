@@ -55,7 +55,7 @@ import Blammo.Logging
 import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Aeson (ToJSON (toJSON))
+import Data.Aeson (ToJSON (toJSON), object)
 import Data.Pool (Pool)
 import Data.Text (Text)
 import Database.PostgreSQL.Simple (Connection)
@@ -72,14 +72,17 @@ import UnliftIO (throwIO)
 import UnliftIO.Async (concurrently)
 import UnliftIO.Exception (catch)
 import Yesod.Core
-  ( MonadHandler,
+  ( ErrorResponse (InternalError, NotFound),
+    MonadHandler,
     PathPiece,
-    Yesod (messageLoggerSource),
+    ToTypedContent (toTypedContent),
+    Yesod (errorHandler, makeSessionBackend, messageLoggerSource),
+    defaultErrorHandler,
     getsYesod,
     mkYesod,
     parseRoutes,
     renderRoute,
-    sendResponseStatus,
+    sendStatusJSON,
     toWaiAppPlain,
   )
 import Yesod.Core.Types (HandlerData (handlerEnv), JSONResponse (JSONResponse), RunHandlerEnv (rheSite))
@@ -142,8 +145,18 @@ instance Yesod App where
   messageLoggerSource app _logger loc source level msg =
     runLoggerLoggingT app $ monadLoggerLog loc source level msg
 
-sendStatusText :: (MonadHandler m) => Status -> Text -> m a
-sendStatusText = sendResponseStatus
+  makeSessionBackend _ = return Nothing
+
+  errorHandler NotFound = do
+    let msg :: Text
+        msg = "Path not found"
+    pure $ toTypedContent $ object ["error" .= msg]
+  errorHandler (InternalError msg) = do
+    pure $ toTypedContent $ object ["error" .= msg]
+  errorHandler e = defaultErrorHandler e
+
+sendStatusError :: (MonadHandler m) => Status -> Text -> m a
+sendStatusError s msg = sendStatusJSON s $ object ["error" .= msg]
 
 data CartPurchaseResponse = CartPurchaseResponse
   { cartPurchaseResponseCartId :: CartId,
@@ -162,13 +175,13 @@ postCartPurchaseR cartId = do
   case cartStatusMaybe of
     Nothing -> do
       logWarn $ "Cart does not exist" :# ["cart_id" .= cartId]
-      sendStatusText status404 "Cart does not exist"
+      sendStatusError status404 "Cart does not exist"
     Just CartStatusPurchased -> do
       logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
-      sendStatusText status409 "Cart already purchased"
+      sendStatusError status409 "Cart already purchased"
     Just CartStatusLocked -> do
       logWarn $ "Cart locked" :# ["cart_id" .= cartId]
-      sendStatusText status409 "Cart locked"
+      sendStatusError status409 "Cart locked"
     Just CartStatusOpen -> do
       withCart cartId $ do
         logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
@@ -180,7 +193,7 @@ postCartPurchaseR cartId = do
         case result of
           Left msg -> do
             logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
-            sendStatusText status500 ("Cart purchase failed: " <> msg)
+            sendStatusError status500 ("Cart purchase failed: " <> msg)
           Right (bookingId, paymentId) -> do
             purchaseDelay <- getsYesod (configPurchaseDelay . appConfig)
             liftIO $ threadDelay (100 * 1000)
