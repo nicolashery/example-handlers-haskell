@@ -52,11 +52,10 @@ import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
-import Data.Aeson (ToJSON (toJSON))
+import Data.Aeson (ToJSON (toJSON), object)
 import Data.Pool (Pool)
 import Data.String.Conversions (cs)
 import Data.Text (Text)
-import Data.Text.Lazy qualified as TL
 import Database.PostgreSQL.Simple (Connection)
 import GHC.Generics (Generic)
 import Lens.Micro (lens)
@@ -65,19 +64,22 @@ import Network.HTTP.Req
     MonadHttp (getHttpConfig, handleHttpException),
     defaultHttpConfig,
   )
-import Network.HTTP.Types (status404, status409, status500)
+import Network.HTTP.Types (Status, status404, status409, status500)
 import UnliftIO (MonadUnliftIO, throwIO)
 import UnliftIO.Async (concurrently)
 import UnliftIO.Exception (catch)
 import Web.Scotty.Trans
   ( ActionT,
-    ScottyError,
+    ScottyError (showError, stringError),
     ScottyT,
+    defaultHandler,
     json,
+    notFound,
     param,
     post,
-    raiseStatus,
+    raise,
     scottyT,
+    status,
   )
 
 data App = App
@@ -146,20 +148,20 @@ data CartPurchaseResponse = CartPurchaseResponse
 instance ToJSON CartPurchaseResponse where
   toJSON = defaultToJSON "cartPurchaseResponse"
 
-postCartPurchaseHandler :: ActionT TL.Text AppM ()
+postCartPurchaseHandler :: ActionT AppError AppM ()
 postCartPurchaseHandler = do
   cartId <- CartId <$> param "cartId"
   cartStatusMaybe <- lift $ getCartStatus cartId
   case cartStatusMaybe of
     Nothing -> do
       logWarn $ "Cart does not exist" :# ["cart_id" .= cartId]
-      raiseStatus status404 "Cart does not exist"
+      raiseAppError status404 "Cart does not exist"
     Just CartStatusPurchased -> do
       logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
-      raiseStatus status409 "Cart already purchased"
+      raiseAppError status409 "Cart already purchased"
     Just CartStatusLocked -> do
       logWarn $ "Cart locked" :# ["cart_id" .= cartId]
-      raiseStatus status409 "Cart locked"
+      raiseAppError status409 "Cart locked"
     Just CartStatusOpen -> do
       logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
       let purchase :: AppM CartPurchaseResponse
@@ -186,14 +188,45 @@ postCartPurchaseHandler = do
       case result of
         Left msg -> do
           logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
-          raiseStatus status500 (cs $ "Cart purchase failed: " <> msg)
+          raiseAppError status500 ("Cart purchase failed: " <> msg)
         Right response -> do
           logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
           json response
 
-application :: ScottyT TL.Text AppM ()
+data AppError = AppError
+  { appErrorStatus :: Status,
+    appErrorMessage :: Text
+  }
+
+instance ScottyError AppError where
+  stringError v = AppError status500 (cs v)
+  showError e = cs $ appErrorMessage e
+
+raiseAppError :: (Monad m) => Status -> Text -> ActionT AppError m a
+raiseAppError s t =
+  raise $
+    AppError
+      { appErrorStatus = s,
+        appErrorMessage = t
+      }
+
+handleException :: (Monad m) => AppError -> ActionT AppError m ()
+handleException e = do
+  status $ appErrorStatus e
+  json $ object ["error" .= appErrorMessage e]
+
+handleNotFound :: (Monad m) => ActionT AppError m ()
+handleNotFound = do
+  status status404
+  let msg :: Text
+      msg = "Path not found"
+  json $ object ["error" .= msg]
+
+application :: ScottyT AppError AppM ()
 application = do
+  defaultHandler handleException
   post "/cart/:cartId/purchase" postCartPurchaseHandler
+  notFound handleNotFound
 
 main :: IO ()
 main = do
