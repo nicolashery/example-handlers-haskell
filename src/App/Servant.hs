@@ -2,17 +2,12 @@
 
 module App.Servant (main) where
 
+import App.AppEnv (AppEnv (appEnvConfig, appEnvHttpConfig), appEnvInit)
 import App.Cart
   ( BookingId,
     CartException (CartException),
     CartId (CartId),
     CartStatus (CartStatusLocked, CartStatusOpen, CartStatusPurchased),
-    HasCartConfig
-      ( getBookingDelay,
-        getBookingUrl,
-        getPaymentDelay,
-        getPaymentUrl
-      ),
     PaymentId,
     getCartStatus,
     markCartAsPurchased,
@@ -20,23 +15,10 @@ import App.Cart
     processPayment,
     withCart,
   )
-import App.Config
-  ( Config
-      ( configBookingDelay,
-        configBookingUrl,
-        configDatabaseUrl,
-        configPaymentDelay,
-        configPaymentUrl,
-        configPurchaseDelay
-      ),
-    configInit,
-  )
-import App.Db (HasDbPool (getDbPool), dbInit)
+import App.Config (Config (configPurchaseDelay))
 import App.Json (defaultToJSON)
 import Blammo.Logging
-  ( HasLogger (loggerL),
-    Logger,
-    LoggingT,
+  ( LoggingT,
     Message ((:#)),
     MonadLogger (monadLoggerLog),
     logInfo,
@@ -44,22 +26,16 @@ import Blammo.Logging
     runLoggerLoggingT,
     (.=),
   )
-import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
 import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
 import Data.Aeson (ToJSON (toJSON), encode, object)
-import Data.Pool (Pool)
 import Data.Text (Text)
-import Database.PostgreSQL.Simple (Connection)
 import GHC.Generics (Generic)
-import Lens.Micro (lens)
 import Network.HTTP.Req
-  ( HttpConfig,
-    MonadHttp (getHttpConfig, handleHttpException),
-    defaultHttpConfig,
+  ( MonadHttp (getHttpConfig, handleHttpException),
   )
 import Network.Wai.Handler.Warp (run)
 import Servant
@@ -86,55 +62,22 @@ import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (concurrently)
 import UnliftIO.Exception (catch, throwIO, try)
 
-data App = App
-  { appConfig :: Config,
-    appLogger :: Logger,
-    appHttpConfig :: HttpConfig,
-    appDbPool :: Pool Connection
+newtype App a = App
+  { unApp :: ReaderT AppEnv (LoggingT IO) a
   }
+  deriving (Functor, Applicative, Monad, MonadReader AppEnv, MonadIO, MonadUnliftIO)
 
-instance HasLogger App where
-  loggerL = lens appLogger $ \x y -> x {appLogger = y}
-
-instance HasCartConfig App where
-  getBookingUrl = configBookingUrl . appConfig
-  getBookingDelay = configBookingDelay . appConfig
-  getPaymentUrl = configPaymentUrl . appConfig
-  getPaymentDelay = configPaymentDelay . appConfig
-
-instance HasDbPool App where
-  getDbPool = appDbPool
-
-appInit :: IO App
-appInit = do
-  config <- configInit
-  logger <- newLoggerEnv
-  dbPool <- dbInit $ configDatabaseUrl config
-  let app =
-        App
-          { appConfig = config,
-            appLogger = logger,
-            appHttpConfig = defaultHttpConfig,
-            appDbPool = dbPool
-          }
-  pure app
-
-newtype AppM a = AppM
-  { unAppM :: ReaderT App (LoggingT IO) a
-  }
-  deriving (Functor, Applicative, Monad, MonadReader App, MonadIO, MonadUnliftIO)
-
-instance MonadLogger AppM where
+instance MonadLogger App where
   monadLoggerLog loc logSource logLevel msg =
-    AppM $ lift $ monadLoggerLog loc logSource logLevel msg
+    App $ lift $ monadLoggerLog loc logSource logLevel msg
 
-instance MonadHttp AppM where
+instance MonadHttp App where
   handleHttpException = throwIO
-  getHttpConfig = asks appHttpConfig
+  getHttpConfig = asks appEnvHttpConfig
 
-appToHandler :: App -> AppM a -> Handler a
+appToHandler :: AppEnv -> App a -> Handler a
 appToHandler app m =
-  Handler $ ExceptT $ try $ runLoggerLoggingT app $ runReaderT (unAppM m) app
+  Handler $ ExceptT $ try $ runLoggerLoggingT app $ runReaderT (unApp m) app
 
 type Api = "cart" :> Capture "cartId" CartId :> "purchase" :> Post '[JSON] CartPurchaseResponse
 
@@ -151,7 +94,7 @@ data CartPurchaseResponse = CartPurchaseResponse
 instance ToJSON CartPurchaseResponse where
   toJSON = defaultToJSON "cartPurchaseResponse"
 
-postCartPurchaseHandler :: CartId -> AppM CartPurchaseResponse
+postCartPurchaseHandler :: CartId -> App CartPurchaseResponse
 postCartPurchaseHandler cartId = do
   cartStatusMaybe <- getCartStatus cartId
   case cartStatusMaybe of
@@ -167,9 +110,9 @@ postCartPurchaseHandler cartId = do
     Just CartStatusOpen -> do
       withCart cartId $ do
         logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-        let action :: AppM (Either Text (BookingId, PaymentId))
+        let action :: App (Either Text (BookingId, PaymentId))
             action = Right <$> concurrently (processBooking cartId) (processPayment cartId)
-            handleError :: CartException -> AppM (Either Text (BookingId, PaymentId))
+            handleError :: CartException -> App (Either Text (BookingId, PaymentId))
             handleError (CartException msg) = pure $ Left msg
         result <- catch action handleError
         case result of
@@ -177,7 +120,7 @@ postCartPurchaseHandler cartId = do
             logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
             throwIO $ jsonError err500 ("Cart purchase failed: " <> msg)
           Right (bookingId, paymentId) -> do
-            purchaseDelay <- asks (configPurchaseDelay . appConfig)
+            purchaseDelay <- asks (configPurchaseDelay . appEnvConfig)
             liftIO $ threadDelay purchaseDelay
             markCartAsPurchased cartId
             logInfo $ "Cart purchase successful" :# ["cart_id" .= cartId]
@@ -211,7 +154,7 @@ customErrorFormatters =
     { notFoundErrorFormatter = notFoundFormatter
     }
 
-server :: ServerT Api AppM
+server :: ServerT Api App
 server = postCartPurchaseHandler
 
 api :: Proxy Api
@@ -219,7 +162,7 @@ api = Proxy
 
 main :: IO ()
 main = do
-  app <- appInit
+  app <- appEnvInit
   let port = 3000
       hoistedServer = hoistServer api (appToHandler app) server
       context = customErrorFormatters :. EmptyContext

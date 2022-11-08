@@ -5,17 +5,12 @@ module App.Scotty
   )
 where
 
+import App.AppEnv (AppEnv (appEnvConfig, appEnvHttpConfig), appEnvInit)
 import App.Cart
   ( BookingId,
     CartException (CartException),
     CartId (CartId),
     CartStatus (CartStatusLocked, CartStatusOpen, CartStatusPurchased),
-    HasCartConfig
-      ( getBookingDelay,
-        getBookingUrl,
-        getPaymentDelay,
-        getPaymentUrl
-      ),
     PaymentId,
     getCartStatus,
     markCartAsPurchased,
@@ -23,23 +18,10 @@ import App.Cart
     processPayment,
     withCart,
   )
-import App.Config
-  ( Config
-      ( configBookingDelay,
-        configBookingUrl,
-        configDatabaseUrl,
-        configPaymentDelay,
-        configPaymentUrl,
-        configPurchaseDelay
-      ),
-    configInit,
-  )
-import App.Db (HasDbPool (getDbPool), dbInit)
+import App.Config (Config (configPurchaseDelay))
 import App.Json (defaultToJSON)
 import Blammo.Logging
-  ( HasLogger (loggerL),
-    Logger,
-    LoggingT,
+  ( LoggingT,
     Message ((:#)),
     MonadLogger (monadLoggerLog),
     logInfo,
@@ -47,22 +29,16 @@ import Blammo.Logging
     runLoggerLoggingT,
     (.=),
   )
-import Blammo.Logging.Simple (newLoggerEnv)
 import Control.Concurrent (threadDelay)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
 import Data.Aeson (ToJSON (toJSON), object)
-import Data.Pool (Pool)
 import Data.String.Conversions (cs)
 import Data.Text (Text)
-import Database.PostgreSQL.Simple (Connection)
 import GHC.Generics (Generic)
-import Lens.Micro (lens)
 import Network.HTTP.Req
-  ( HttpConfig,
-    MonadHttp (getHttpConfig, handleHttpException),
-    defaultHttpConfig,
+  ( MonadHttp (getHttpConfig, handleHttpException),
   )
 import Network.HTTP.Types (Status, status404, status409, status500)
 import UnliftIO (MonadUnliftIO, throwIO)
@@ -82,60 +58,27 @@ import Web.Scotty.Trans
     status,
   )
 
-data App = App
-  { appConfig :: Config,
-    appLogger :: Logger,
-    appHttpConfig :: HttpConfig,
-    appDbPool :: Pool Connection
+newtype App a = App
+  { unApp :: ReaderT AppEnv (LoggingT IO) a
   }
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader AppEnv, MonadUnliftIO)
 
-instance HasLogger App where
-  loggerL = lens appLogger $ \x y -> x {appLogger = y}
-
-instance HasCartConfig App where
-  getBookingUrl = configBookingUrl . appConfig
-  getBookingDelay = configBookingDelay . appConfig
-  getPaymentUrl = configPaymentUrl . appConfig
-  getPaymentDelay = configPaymentDelay . appConfig
-
-instance HasDbPool App where
-  getDbPool = appDbPool
-
-appInit :: IO App
-appInit = do
-  config <- configInit
-  logger <- newLoggerEnv
-  dbPool <- dbInit $ configDatabaseUrl config
-  let app =
-        App
-          { appConfig = config,
-            appLogger = logger,
-            appHttpConfig = defaultHttpConfig,
-            appDbPool = dbPool
-          }
-  pure app
-
-newtype AppM a = AppM
-  { unAppM :: ReaderT App (LoggingT IO) a
-  }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader App, MonadUnliftIO)
-
-instance MonadLogger AppM where
+instance MonadLogger App where
   monadLoggerLog loc logSource logLevel msg =
-    AppM $ lift $ monadLoggerLog loc logSource logLevel msg
+    App $ lift $ monadLoggerLog loc logSource logLevel msg
 
 instance (ScottyError e, MonadLogger m) => MonadLogger (ActionT e m) where
   monadLoggerLog loc logSource logLevel msg =
     lift $ monadLoggerLog loc logSource logLevel msg
 
-instance MonadHttp AppM where
+instance MonadHttp App where
   handleHttpException = throwIO
-  getHttpConfig = asks appHttpConfig
+  getHttpConfig = asks appEnvHttpConfig
 
-runApp :: AppM a -> IO a
+runApp :: App a -> IO a
 runApp m = do
-  app <- appInit
-  runLoggerLoggingT app $ runReaderT (unAppM m) app
+  app <- appEnvInit
+  runLoggerLoggingT app $ runReaderT (unApp m) app
 
 data CartPurchaseResponse = CartPurchaseResponse
   { cartPurchaseResponseCartId :: CartId,
@@ -148,7 +91,7 @@ data CartPurchaseResponse = CartPurchaseResponse
 instance ToJSON CartPurchaseResponse where
   toJSON = defaultToJSON "cartPurchaseResponse"
 
-postCartPurchaseHandler :: ActionT AppError AppM ()
+postCartPurchaseHandler :: ActionT AppError App ()
 postCartPurchaseHandler = do
   cartId <- CartId <$> param "cartId"
   cartStatusMaybe <- lift $ getCartStatus cartId
@@ -164,10 +107,10 @@ postCartPurchaseHandler = do
       raiseAppError status409 "Cart locked"
     Just CartStatusOpen -> do
       logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
-      let purchase :: AppM CartPurchaseResponse
+      let purchase :: App CartPurchaseResponse
           purchase = do
             (bookingId, paymentId) <- concurrently (processBooking cartId) (processPayment cartId)
-            purchaseDelay <- asks (configPurchaseDelay . appConfig)
+            purchaseDelay <- asks (configPurchaseDelay . appEnvConfig)
             liftIO $ threadDelay purchaseDelay
             markCartAsPurchased cartId
             pure $
@@ -178,10 +121,10 @@ postCartPurchaseHandler = do
                   cartPurchaseResponsePaymentId = paymentId
                 }
 
-          action :: AppM (Either Text CartPurchaseResponse)
+          action :: App (Either Text CartPurchaseResponse)
           action = Right <$> withCart cartId purchase
 
-          handleError :: CartException -> AppM (Either Text CartPurchaseResponse)
+          handleError :: CartException -> App (Either Text CartPurchaseResponse)
           handleError (CartException msg) = pure $ Left msg
 
       result <- lift $ catch action handleError
@@ -222,7 +165,7 @@ handleNotFound = do
       msg = "Path not found"
   json $ object ["error" .= msg]
 
-application :: ScottyT AppError AppM ()
+application :: ScottyT AppError App ()
 application = do
   defaultHandler handleException
   post "/cart/:cartId/purchase" postCartPurchaseHandler
