@@ -50,9 +50,8 @@ import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Trans (lift)
-import Data.Aeson (ToJSON (toJSON))
+import Data.Aeson (ToJSON (toJSON), encode, object)
 import Data.Pool (Pool)
-import Data.String.Conversions (cs)
 import Data.Text (Text)
 import Database.PostgreSQL.Simple (Connection)
 import GHC.Generics (Generic)
@@ -65,20 +64,24 @@ import Network.HTTP.Req
 import Network.Wai.Handler.Warp (run)
 import Servant
   ( Capture,
+    Context (EmptyContext, (:.)),
+    ErrorFormatters (notFoundErrorFormatter),
     FromHttpApiData,
     Handler (Handler),
     HasServer (ServerT),
     JSON,
     Post,
     Proxy (Proxy),
-    ServerError (errBody),
+    ServerError (errBody, errHeaders),
+    defaultErrorFormatters,
     err404,
     err409,
     err500,
     hoistServer,
-    serve,
+    serveWithContext,
     (:>),
   )
+import Servant.Server (NotFoundErrorFormatter)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (concurrently)
 import UnliftIO.Exception (catch, throwIO, try)
@@ -154,13 +157,13 @@ postCartPurchaseHandler cartId = do
   case cartStatusMaybe of
     Nothing -> do
       logWarn $ "Cart does not exist" :# ["cart_id" .= cartId]
-      throwIO $ err404 {errBody = "Cart does not exist"}
+      throwIO $ jsonError err404 "Cart does not exist"
     Just CartStatusPurchased -> do
       logWarn $ "Cart already purchased" :# ["cart_id" .= cartId]
-      throwIO $ err409 {errBody = "Cart already purchased"}
+      throwIO $ jsonError err409 "Cart already purchased"
     Just CartStatusLocked -> do
       logWarn $ "Cart locked" :# ["cart_id" .= cartId]
-      throwIO $ err409 {errBody = "Cart locked"}
+      throwIO $ jsonError err409 "Cart locked"
     Just CartStatusOpen -> do
       withCart cartId $ do
         logInfo $ "Cart purchase starting" :# ["cart_id" .= cartId]
@@ -172,7 +175,7 @@ postCartPurchaseHandler cartId = do
         case result of
           Left msg -> do
             logWarn $ ("Cart purchase failed: " <> msg) :# ["cart_id" .= cartId]
-            throwIO $ err500 {errBody = cs $ "Cart purchase failed: " <> msg}
+            throwIO $ jsonError err500 ("Cart purchase failed: " <> msg)
           Right (bookingId, paymentId) -> do
             purchaseDelay <- asks (configPurchaseDelay . appConfig)
             liftIO $ threadDelay purchaseDelay
@@ -186,6 +189,28 @@ postCartPurchaseHandler cartId = do
                   cartPurchaseResponsePaymentId = paymentId
                 }
 
+jsonError :: ServerError -> Text -> ServerError
+jsonError err msg =
+  err
+    { errBody = encode $ object ["error" .= msg],
+      errHeaders = [("Content-Type", "application/json")]
+    }
+
+notFoundFormatter :: NotFoundErrorFormatter
+notFoundFormatter _ =
+  let msg :: Text
+      msg = "Path not found"
+   in err404
+        { errBody = encode $ object ["error" .= msg],
+          errHeaders = [("Content-Type", "application/json")]
+        }
+
+customErrorFormatters :: ErrorFormatters
+customErrorFormatters =
+  defaultErrorFormatters
+    { notFoundErrorFormatter = notFoundFormatter
+    }
+
 server :: ServerT Api AppM
 server = postCartPurchaseHandler
 
@@ -196,5 +221,7 @@ main :: IO ()
 main = do
   app <- appInit
   let port = 3000
-      waiApp = serve api $ hoistServer api (appToHandler app) server
+      hoistedServer = hoistServer api (appToHandler app) server
+      context = customErrorFormatters :. EmptyContext
+      waiApp = serveWithContext api context hoistedServer
   run port waiApp
