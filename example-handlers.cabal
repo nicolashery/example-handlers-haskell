@@ -5,7 +5,7 @@ author: Nicolas Hery
 
 common options
     build-depends:
-        , base ^>= 4.15.1.0
+        , base ^>= 4.17.1.0
     default-extensions:
         BangPatterns
         BinaryLiterals
@@ -89,7 +89,7 @@ library
     build-depends:
         , aeson ^>= 2.1
         , Blammo ^>= 1.0
-        , bytestring ^>= 0.10
+        , bytestring ^>= 0.11
         , http-client ^>= 0.7
         , http-types ^>= 0.12
         , microlens ^>= 0.4
@@ -101,7 +101,7 @@ library
         , scotty ^>= 0.12
         , servant-server ^>= 0.19
         , string-conversions ^>= 0.4
-        , text ^>= 1.2
+        , text ^>= 2.0
         , unliftio ^>= 0.2
         , warp ^>= 3.3
         , yesod-core ^>= 1.6
