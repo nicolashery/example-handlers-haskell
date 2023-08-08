@@ -88,18 +88,18 @@ library
         App.Yesod
     build-depends:
         , aeson ^>= 2.1
-        , Blammo ^>= 1.0
+        , Blammo ^>= 1.1
         , bytestring ^>= 0.11
         , http-client ^>= 0.7
         , http-types ^>= 0.12
         , microlens ^>= 0.4
         , modern-uri ^>= 0.3
-        , mtl ^>= 2.2
-        , postgresql-simple ^>= 0.6
+        , mtl ^>= 2.3
+        , postgresql-simple ^>= 0.7
         , req ^>= 3.13
-        , resource-pool ^>= 0.3
+        , resource-pool ^>= 0.4
         , scotty ^>= 0.12
-        , servant-server ^>= 0.19
+        , servant-server ^>= 0.20
         , string-conversions ^>= 0.4
         , text ^>= 2.0
         , unliftio ^>= 0.2
