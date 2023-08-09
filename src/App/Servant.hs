@@ -17,20 +17,18 @@ import App.Cart
   )
 import App.Config (Config (configPurchaseDelay))
 import App.Json (defaultToJSON)
+import App.Logging (monadLoggerLogImpl)
 import Blammo.Logging
-  ( LoggingT,
-    Message ((:#)),
+  ( Message ((:#)),
     MonadLogger (monadLoggerLog),
     logInfo,
     logWarn,
-    runLoggerLoggingT,
     (.=),
   )
 import Control.Concurrent (threadDelay)
 import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
-import Control.Monad.Trans (lift)
 import Data.Aeson (ToJSON (toJSON), encode, object)
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -63,13 +61,12 @@ import UnliftIO.Async (concurrently)
 import UnliftIO.Exception (catch, throwIO, try)
 
 newtype App a = App
-  { unApp :: ReaderT AppEnv (LoggingT IO) a
+  { unApp :: ReaderT AppEnv IO a
   }
   deriving (Functor, Applicative, Monad, MonadReader AppEnv, MonadIO, MonadUnliftIO)
 
 instance MonadLogger App where
-  monadLoggerLog loc logSource logLevel msg =
-    App $ lift $ monadLoggerLog loc logSource logLevel msg
+  monadLoggerLog = monadLoggerLogImpl
 
 instance MonadHttp App where
   handleHttpException = throwIO
@@ -77,7 +74,7 @@ instance MonadHttp App where
 
 appToHandler :: AppEnv -> App a -> Handler a
 appToHandler app m =
-  Handler $ ExceptT $ try $ runLoggerLoggingT app $ runReaderT (unApp m) app
+  Handler $ ExceptT $ try $ runReaderT (unApp m) app
 
 type Api = "cart" :> Capture "cartId" CartId :> "purchase" :> Post '[JSON] CartPurchaseResponse
 

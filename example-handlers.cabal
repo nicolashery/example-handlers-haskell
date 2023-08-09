@@ -81,6 +81,7 @@ library
         App.Db
         App.External
         App.Json
+        App.Logging
         App.Req
         App.Scotty
         App.Servant
@@ -92,8 +93,8 @@ library
         , bytestring ^>= 0.11
         , http-client ^>= 0.7
         , http-types ^>= 0.12
-        , microlens ^>= 0.4
         , modern-uri ^>= 0.3
+        , monad-logger ^>= 0.3
         , mtl ^>= 2.3
         , postgresql-simple ^>= 0.7
         , req ^>= 3.13

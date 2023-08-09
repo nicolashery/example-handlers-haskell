@@ -2,7 +2,7 @@ module App.AppEnv
   ( AppEnv
       ( AppEnv,
         appEnvConfig,
-        appEnvLogger,
+        appEnvLogFunc,
         appEnvHttpConfig,
         appEnvDbPool
       ),
@@ -29,22 +29,20 @@ import App.Config
     configInit,
   )
 import App.Db (HasDbPool (getDbPool), dbInit)
-import Blammo.Logging (HasLogger (loggerL), Logger)
-import Blammo.Logging.Simple (newLoggerEnv)
+import App.Logging (HasLogFunc (getLogFunc), LogFunc, loggingInit)
 import Data.Pool (Pool)
 import Database.PostgreSQL.Simple (Connection)
-import Lens.Micro (lens)
 import Network.HTTP.Req (HttpConfig, defaultHttpConfig)
 
 data AppEnv = AppEnv
   { appEnvConfig :: Config,
-    appEnvLogger :: Logger,
+    appEnvLogFunc :: LogFunc,
     appEnvHttpConfig :: HttpConfig,
     appEnvDbPool :: Pool Connection
   }
 
-instance HasLogger AppEnv where
-  loggerL = lens appEnvLogger $ \x y -> x {appEnvLogger = y}
+instance HasLogFunc AppEnv where
+  getLogFunc = appEnvLogFunc
 
 instance HasCartConfig AppEnv where
   getBookingUrl = configBookingUrl . appEnvConfig
@@ -58,12 +56,12 @@ instance HasDbPool AppEnv where
 appEnvInit :: IO AppEnv
 appEnvInit = do
   config <- configInit
-  logger <- newLoggerEnv
+  logFunc <- loggingInit
   dbPool <- dbInit $ configDatabaseUrl config
   let app =
         AppEnv
           { appEnvConfig = config,
-            appEnvLogger = logger,
+            appEnvLogFunc = logFunc,
             appEnvHttpConfig = defaultHttpConfig,
             appEnvDbPool = dbPool
           }

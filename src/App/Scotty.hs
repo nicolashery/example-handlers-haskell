@@ -20,13 +20,12 @@ import App.Cart
   )
 import App.Config (Config (configPurchaseDelay))
 import App.Json (defaultToJSON)
+import App.Logging (monadLoggerLogImpl)
 import Blammo.Logging
-  ( LoggingT,
-    Message ((:#)),
+  ( Message ((:#)),
     MonadLogger (monadLoggerLog),
     logInfo,
     logWarn,
-    runLoggerLoggingT,
     (.=),
   )
 import Control.Concurrent (threadDelay)
@@ -59,13 +58,12 @@ import Web.Scotty.Trans
   )
 
 newtype App a = App
-  { unApp :: ReaderT AppEnv (LoggingT IO) a
+  { unApp :: ReaderT AppEnv IO a
   }
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader AppEnv, MonadUnliftIO)
 
 instance MonadLogger App where
-  monadLoggerLog loc logSource logLevel msg =
-    App $ lift $ monadLoggerLog loc logSource logLevel msg
+  monadLoggerLog = monadLoggerLogImpl
 
 instance (ScottyError e, MonadLogger m) => MonadLogger (ActionT e m) where
   monadLoggerLog loc logSource logLevel msg =
@@ -78,7 +76,7 @@ instance MonadHttp App where
 runApp :: App a -> IO a
 runApp m = do
   app <- appEnvInit
-  runLoggerLoggingT app $ runReaderT (unApp m) app
+  runReaderT (unApp m) app
 
 data CartPurchaseResponse = CartPurchaseResponse
   { cartPurchaseResponseCartId :: CartId,

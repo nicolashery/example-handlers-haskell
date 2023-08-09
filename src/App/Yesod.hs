@@ -11,7 +11,10 @@ module App.Yesod
   )
 where
 
-import App.AppEnv (AppEnv (appEnvConfig, appEnvHttpConfig), appEnvInit)
+import App.AppEnv
+  ( AppEnv (appEnvConfig, appEnvHttpConfig, appEnvLogFunc),
+    appEnvInit,
+  )
 import App.Cart
   ( BookingId,
     CartException (CartException),
@@ -35,10 +38,8 @@ import App.Db (HasDbPool (getDbPool))
 import App.Json (defaultToJSON)
 import Blammo.Logging
   ( Message ((:#)),
-    MonadLogger (monadLoggerLog),
     logInfo,
     logWarn,
-    runLoggerLoggingT,
     (.=),
   )
 import Control.Concurrent (threadDelay)
@@ -96,8 +97,9 @@ instance MonadHttp Handler where
   getHttpConfig = getsYesod appEnvHttpConfig
 
 instance Yesod AppEnv where
-  messageLoggerSource app _logger loc source level msg =
-    runLoggerLoggingT app $ monadLoggerLog loc source level msg
+  messageLoggerSource app _logger loc source level msg = do
+    let logFunc = appEnvLogFunc app
+    logFunc loc source level msg
 
   makeSessionBackend _ = return Nothing
 
